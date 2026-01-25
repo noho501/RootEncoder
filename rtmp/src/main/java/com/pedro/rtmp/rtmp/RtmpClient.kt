@@ -74,6 +74,7 @@ class RtmpClient(private val connectChecker: ConnectChecker) {
   private var socket: RtmpSocket? = null
   private var scope = CoroutineScope(Dispatchers.IO)
   private var scopeRetry = CoroutineScope(Dispatchers.IO)
+  private var scopePing = CoroutineScope(Dispatchers.IO)
   private var job: Job? = null
   private var jobRetry: Job? = null
   private var commandsManager: CommandsManager = CommandsManagerAmf0()
@@ -401,7 +402,7 @@ class RtmpClient(private val connectChecker: ConnectChecker) {
             Log.i(TAG, "pong received: ${userControl.event.data}")
             if (shouldSendPings) {
               rtt = (TimeUtils.getCurrentTimeMicro() - pingTs.get()).toInt()
-              CoroutineScope(Dispatchers.IO).launch {
+              scopePing.launch {
                 delay(1000)
                 if (isStreaming) {
                   pingTs.set(TimeUtils.getCurrentTimeMicro())
@@ -579,6 +580,8 @@ class RtmpClient(private val connectChecker: ConnectChecker) {
       jobRetry = null
       scopeRetry.cancel()
       scopeRetry = CoroutineScope(Dispatchers.IO)
+      scopePing.cancel()
+      scopePing = CoroutineScope(Dispatchers.IO)
     }
     job?.cancelAndJoin()
     job = null
