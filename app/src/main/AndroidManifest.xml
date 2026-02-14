@@ -69,6 +69,11 @@
         android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize"
         tools:ignore="DiscouragedApi" />
 
+    <activity
+        android:name="com.pedro.streamer.srtreceiver.SrtReceiverActivity"
+        android:label="@string/srt_receiver"
+        />
+
     <service android:name="com.pedro.streamer.screen.ScreenService"
         android:foregroundServiceType="mediaProjection|microphone|camera"
         />
