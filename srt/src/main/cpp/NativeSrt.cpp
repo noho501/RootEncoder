@@ -125,7 +125,7 @@ Java_com_pedro_srt_utils_SrtSocket_nativeOpen(JNIEnv *env, jobject thiz) {
     int tsbpd = 1;
     srt_setsockopt(sock, 0, SRTO_TSBPDMODE, &tsbpd, sizeof(tsbpd));
 
-    int sndtimeo = 3000; //  giây
+    int sndtimeo = 1000; //  giây
     srt_setsockopt(sock, 0, SRTO_SNDTIMEO, &sndtimeo, sizeof(sndtimeo));
 
     LOGI("Native SRT socket opened and optimized for LIVE: %d", sock);

@@ -94,9 +94,8 @@ class SrtSocket(val type: SocketType, val host: String, val port: Int, timeout: 
 
     suspend fun write(srtPacket: SrtPacket) = withContext(Dispatchers.IO) {
         if (type == SocketType.NATIVE && nativeSock != -1) {
-            val dataPacket = srtPacket as? DataPacket
-            if (dataPacket != null) {
-                val result = nativeWrite(nativeSock, dataPacket.payload)
+            if (srtPacket is DataPacket) {
+                val result = nativeWrite(nativeSock, srtPacket.payload)
                 if (result < 0) {
                     throw IOException("Native write failed: Connection broken")
                 }
