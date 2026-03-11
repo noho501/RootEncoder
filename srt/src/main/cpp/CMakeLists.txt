@@ -27,9 +27,25 @@ target_link_libraries(nativesrt
 
 # Link libsrt if available
 # The library should be placed in src/main/jniLibs/${ANDROID_ABI}/libsrt.so
-set(SRT_LIB_PATH "${CMAKE_SOURCE_DIR}/../jniLibs/${ANDROID_ABI}/libsrt.so")
+# Link libsrt
+# Sử dụng CMAKE_CURRENT_SOURCE_DIR để trỏ đường dẫn chính xác
+set(SRT_LIB_PATH "${CMAKE_CURRENT_SOURCE_DIR}/../jniLibs/${ANDROID_ABI}/libsrt.so")
+
 if(EXISTS ${SRT_LIB_PATH})
-    target_link_libraries(nativesrt ${SRT_LIB_PATH})
+    add_library(libsrt_bin SHARED IMPORTED)
+
+    set_target_properties(libsrt_bin PROPERTIES IMPORTED_LOCATION ${SRT_LIB_PATH})
+
+    target_link_libraries(nativesrt
+        libsrt_bin
+        ${log-lib}
+        ${android-lib}
+    )
+    message(STATUS "Found and linked libsrt at: ${SRT_LIB_PATH}")
 else()
-    message(WARNING "libsrt.so not found at ${SRT_LIB_PATH}. Please build and add libsrt for your target ABI.")
+    message(FATAL_ERROR "NOT FOUND: libsrt.so at ${SRT_LIB_PATH}")
+endif()
+
+if(ANDROID)
+    target_link_options(nativesrt PRIVATE "-Wl,-z,max-page-size=16384")
 endif()

@@ -17,7 +17,8 @@ JNIEXPORT jint JNICALL
 Java_com_pedro_srtreceiver_SrtServerSocket_nativeAccept(JNIEnv *env, jobject thiz, jint serverFd);
 
 JNIEXPORT jint JNICALL
-Java_com_pedro_srtreceiver_SrtServerSocket_nativeRecv(JNIEnv *env, jobject thiz, jint socketFd, jbyteArray buffer);
+Java_com_pedro_srtreceiver_SrtServerSocket_nativeRecv(JNIEnv *env, jobject thiz, jint socketFd,
+                                                      jbyteArray buffer);
 
 JNIEXPORT void JNICALL
 Java_com_pedro_srtreceiver_SrtServerSocket_nativeClose(JNIEnv *env, jobject thiz, jint socketFd);
