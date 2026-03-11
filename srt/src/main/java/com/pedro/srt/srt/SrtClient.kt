@@ -242,7 +242,7 @@ class SrtClient(private val connectChecker: ConnectChecker) {
                     commandsManager.writeHandshake(
                         socket, response.copy(
                             encryption = commandsManager.getEncryptType(),
-                            extensionField = ExtensionField.calculateValue(response.extensionField),
+                            extensionField = ExtensionField.calculateValue(response.extensionField, true),
                             handshakeType = HandshakeType.CONCLUSION,
                             handshakeExtension = HandshakeExtension(
                                 flags = ExtensionContentFlag.TSBPDSND.value or ExtensionContentFlag.TSBPDRCV.value or
