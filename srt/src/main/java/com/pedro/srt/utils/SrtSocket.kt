@@ -127,7 +127,11 @@ class SrtSocket(val type: SocketType, val host: String, val port: Int, timeout: 
 
     companion object {
         init {
-            System.loadLibrary("nativesrt")
+            try {
+                System.loadLibrary("nativesrt")
+            } catch (_: UnsatisfiedLinkError) {
+                println("Native library not found")
+            }
         }
     }
 }
