@@ -341,7 +341,9 @@ class GlStreamInterface(private val context: Context): OnFrameAvailableListener,
             // Each preview uses its own isPortrait and viewPort configuration
             mainRender.drawScreenPreview(info.config.width, info.config.height, info.config.isPortrait, info.config.aspectRatioMode, 0,
               info.config.verticalFlip, info.config.horizontalFlip, info.config.viewPort)
-            info.surfaceManager.swapBuffer()
+
+              info.surfaceManager.setPresentationTime(mainRender.getSurfaceTexture().timestamp)
+              info.surfaceManager.swapBuffer()
           }
         }
       }
