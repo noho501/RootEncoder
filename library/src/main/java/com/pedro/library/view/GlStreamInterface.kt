@@ -412,37 +412,43 @@ class GlStreamInterface(private val context: Context): OnFrameAvailableListener,
    * @param config configuration for the preview surface
    */
   fun addMultiPreviewSurface(surface: Surface, config: MultiPreviewConfig) {
-    if (surfaceManager.isReady) {
-      multiPreviewSurfaceManagers.remove(surface)?.surfaceManager?.release()
+      executor?.submit {
+          if (surfaceManager.isReady) {
+              multiPreviewSurfaceManagers.remove(surface)?.surfaceManager?.release()
 
-      val w = if (config.width > 0) config.width else if (previewWidth == 0) encoderWidth else previewWidth
-      val h = if (config.height > 0) config.height else if (previewHeight == 0) encoderHeight else previewHeight
+              val w = if (config.width > 0) config.width else if (previewWidth == 0) encoderWidth else previewWidth
+              val h = if (config.height > 0) config.height else if (previewHeight == 0) encoderHeight else previewHeight
 
-      val surfaceManager = SurfaceManager()
-      surfaceManager.eglSetup(surface, this@GlStreamInterface.surfaceManager)
-      val finalConfig = MultiPreviewConfig(
-        w,
-        h,
-        config.horizontalFlip,
-        config.verticalFlip,
-        config.aspectRatioMode,
-        config.isPortrait,
-        config.viewPort
-      )
-      multiPreviewSurfaceManagers[surface] = PreviewSurfaceInfo(surfaceManager, finalConfig)
+              val newSurfaceManager = SurfaceManager()
+              newSurfaceManager.eglSetup(surface, this@GlStreamInterface.surfaceManager)
+              val finalConfig = MultiPreviewConfig(
+                  w,
+                  h,
+                  config.horizontalFlip,
+                  config.verticalFlip,
+                  config.aspectRatioMode,
+                  config.isPortrait,
+                  config.viewPort
+              )
+              multiPreviewSurfaceManagers[surface] = PreviewSurfaceInfo(newSurfaceManager, finalConfig)
+          }
+      }
+  }
+
+    fun removeMultiPreviewSurface(surface: Surface) {
+        executor?.submit {
+            multiPreviewSurfaceManagers.remove(surface)?.surfaceManager?.release()
+        }
     }
-  }
 
-  fun removeMultiPreviewSurface(surface: Surface) {
-    multiPreviewSurfaceManagers.remove(surface)?.surfaceManager?.release()
-  }
-
-  fun removeAllMultiPreviewSurfaces() {
-    multiPreviewSurfaceManagers.values.forEach { info ->
-      info.surfaceManager.release()
+    fun removeAllMultiPreviewSurfaces() {
+        executor?.submit {
+            multiPreviewSurfaceManagers.values.forEach { info ->
+                info.surfaceManager.release()
+            }
+            multiPreviewSurfaceManagers.clear()
+        }
     }
-    multiPreviewSurfaceManagers.clear()
-  }
 
   fun updateMultiPreviewConfig(surface: Surface, config: MultiPreviewConfig): Boolean {
     val info = multiPreviewSurfaceManagers[surface] ?: return false
