@@ -23,6 +23,7 @@ import android.graphics.SurfaceTexture.OnFrameAvailableListener
 import android.os.Build
 import android.os.Handler
 import android.os.HandlerThread
+import android.util.Log
 import android.view.Surface
 import androidx.annotation.RequiresApi
 import com.pedro.common.newSingleThreadExecutor
@@ -412,25 +413,26 @@ class GlStreamInterface(private val context: Context): OnFrameAvailableListener,
    * @param config configuration for the preview surface
    */
   fun addMultiPreviewSurface(surface: Surface, config: MultiPreviewConfig) {
+      Log.d("WebRTC_Bridge", "🚀 [Fork] Start call addMultiPreviewSurface on GL Thread")
       executor?.submit {
-          if (surfaceManager.isReady) {
-              multiPreviewSurfaceManagers.remove(surface)?.surfaceManager?.release()
+          try {
+              if (surfaceManager.isReady) {
+                  multiPreviewSurfaceManagers.remove(surface)?.surfaceManager?.release()
 
-              val w = if (config.width > 0) config.width else if (previewWidth == 0) encoderWidth else previewWidth
-              val h = if (config.height > 0) config.height else if (previewHeight == 0) encoderHeight else previewHeight
+                  val w = if (config.width > 0) config.width else if (previewWidth == 0) encoderWidth else previewWidth
+                  val h = if (config.height > 0) config.height else if (previewHeight == 0) encoderHeight else previewHeight
 
-              val newSurfaceManager = SurfaceManager()
-              newSurfaceManager.eglSetup(surface, this@GlStreamInterface.surfaceManager)
-              val finalConfig = MultiPreviewConfig(
-                  w,
-                  h,
-                  config.horizontalFlip,
-                  config.verticalFlip,
-                  config.aspectRatioMode,
-                  config.isPortrait,
-                  config.viewPort
-              )
-              multiPreviewSurfaceManagers[surface] = PreviewSurfaceInfo(newSurfaceManager, finalConfig)
+                  val newSurfaceManager = SurfaceManager()
+                  newSurfaceManager.eglSetup(surface, this@GlStreamInterface.surfaceManager)
+                  val finalConfig = MultiPreviewConfig(w, h, config.horizontalFlip, config.verticalFlip, config.aspectRatioMode, config.isPortrait, config.viewPort)
+                  multiPreviewSurfaceManagers[surface] = PreviewSurfaceInfo(newSurfaceManager, finalConfig)
+
+                  Log.d("WebRTC_Bridge", "4️⃣ [Fork] EGL Setup success! Pedro has receive WebRTC Surface.")
+              } else {
+                  Log.e("WebRTC_Bridge", "❌ [Fork] Fail: surfaceManager.isReady = false (Camera not ready)")
+              }
+          } catch (e: Exception) {
+              Log.e("WebRTC_Bridge", "❌ [Fork] Crash while setup egl: ${e.message}")
           }
       }
   }
