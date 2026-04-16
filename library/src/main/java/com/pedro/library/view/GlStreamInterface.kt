@@ -299,6 +299,11 @@ class GlStreamInterface(private val context: Context): OnFrameAvailableListener,
         // Fix: same timestamp fix for the dedicated record surface
         surfaceManagerEncoderRecord.setPresentationTime(mainRender.getSurfaceTexture().timestamp)
         surfaceManagerEncoderRecord.swapBuffer()
+
+          val debugTime = System.currentTimeMillis()
+          if (debugTime % 1000 < 30) {
+              Log.d("WebRTC_Test", "3. [Pedro Fork] swapBuffer executed on Record Surface! Timestamp: ${mainRender.getSurfaceTexture().timestamp}")
+          }
       }
     }
     //render surface photo if request photo
