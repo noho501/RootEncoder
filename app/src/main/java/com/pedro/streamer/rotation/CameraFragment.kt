@@ -1,26 +1,10 @@
-/*
- * Copyright (C) 2024 pedroSG94.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- * http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
-
 package com.pedro.streamer.rotation
 
 import android.annotation.SuppressLint
-import android.os.Build
 import android.os.Bundle
 import android.util.Log
 import android.view.LayoutInflater
+import android.view.Surface
 import android.view.SurfaceHolder
 import android.view.SurfaceView
 import android.view.View
@@ -28,8 +12,10 @@ import android.view.ViewGroup
 import android.widget.EditText
 import android.widget.ImageView
 import android.widget.TextView
-import androidx.annotation.RequiresApi
 import androidx.fragment.app.Fragment
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
 import com.pedro.common.ConnectChecker
 import com.pedro.common.onMainThreadHandler
 import com.pedro.encoder.input.sources.video.Camera1Source
@@ -41,35 +27,13 @@ import com.pedro.library.util.BitrateAdapter
 import com.pedro.streamer.R
 import com.pedro.streamer.utils.PathUtils
 import com.pedro.streamer.utils.toast
+import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import com.pedro.streamer.webrtc.session.WebRtcSessionManager
+import org.koin.android.ext.android.inject
 
-/**
- * Example code to stream using StreamBase. This is the recommend way to use the library.
- * Necessary API 21+
- * This mode allow you stream using custom Video/Audio sources, attach a preview or not dynamically, support device rotation, etc.
- *
- * Check Menu to use filters, video and audio sources, and orientation
- *
- * Orientation horizontal (by default) means that you want stream with vertical resolution
- * (with = 640, height = 480 and rotation = 0) The stream/record result will be 640x480 resolution
- *
- * Orientation vertical means that you want stream with vertical resolution
- * (with = 640, height = 480 and rotation = 90) The stream/record result will be 480x640 resolution
- *
- * More documentation see:
- * [com.pedro.library.base.StreamBase]
- * Support RTMP, RTSP and SRT with commons features
- * [com.pedro.library.generic.GenericStream]
- * Support RTSP with all RTSP features
- * [com.pedro.library.rtsp.RtspStream]
- * Support RTMP with all RTMP features
- * [com.pedro.library.rtmp.RtmpStream]
- * Support SRT with all SRT features
- * [com.pedro.library.srt.SrtStream]
- */
-@RequiresApi(Build.VERSION_CODES.LOLLIPOP)
 class CameraFragment : Fragment(), ConnectChecker {
     val TAG = "CameraFragment"
 
@@ -94,6 +58,9 @@ class CameraFragment : Fragment(), ConnectChecker {
     private val aBitrate = 128 * 1000
     private var recordPath = ""
 
+    private val webRtcSessionManager: WebRtcSessionManager by inject()
+    private var currentWebRtcSurface: Surface? = null
+
     //Bitrate adapter used to change the bitrate on fly depend of the bandwidth.
     private val bitrateAdapter = BitrateAdapter {
         genericStream.setVideoBitrateOnFly(it)
@@ -116,9 +83,17 @@ class CameraFragment : Fragment(), ConnectChecker {
         (activity as? RotationActivity)?.let {
             surfaceView.setOnTouchListener(it)
         }
+
         surfaceView.holder.addCallback(object : SurfaceHolder.Callback {
             override fun surfaceCreated(holder: SurfaceHolder) {
                 if (!genericStream.isOnPreview) genericStream.startPreview(surfaceView)
+
+                // --- WEBRTC: Re-attach Surface when RootEncoder preview starts ---
+                currentWebRtcSurface?.let {
+                    surfaceView.postDelayed({
+                        genericStream.getGlInterface().addMediaCodecRecordSurface(it)
+                    }, 500) // Small delay to ensure OpenGL context is fully initialized
+                }
             }
 
             override fun surfaceChanged(
@@ -131,6 +106,9 @@ class CameraFragment : Fragment(), ConnectChecker {
             }
 
             override fun surfaceDestroyed(holder: SurfaceHolder) {
+                // --- WEBRTC: Remove Surface before stopPreview to prevent EGL crash ---
+                genericStream.getGlInterface().removeMediaCodecRecordSurface()
+
                 if (genericStream.isOnPreview) genericStream.stopPreview()
             }
 
@@ -183,6 +161,44 @@ class CameraFragment : Fragment(), ConnectChecker {
         return view
     }
 
+    override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
+        super.onViewCreated(view, savedInstanceState)
+        observeWebRtc()
+    }
+
+    private fun observeWebRtc() {
+        viewLifecycleOwner.lifecycleScope.launch {
+            viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
+
+                launch {
+                    webRtcSessionManager.isDataChannelReady.collect { isReady ->
+                        Log.d(TAG, "Data Channel Ready: $isReady")
+                        if (isReady) {
+                            webRtcSessionManager.startLocalVideoCapture(width, height, 30)
+                        } else {
+                            webRtcSessionManager.stopLocalVideoCapture()
+                        }
+                    }
+                }
+
+                launch {
+                    webRtcSessionManager.webrtcSurfaceFlow.collect { surface ->
+                        currentWebRtcSurface = surface
+                        if (surface != null) {
+                            Log.d(TAG, "Received Surface from WebRTC, attaching to RootEncoder...")
+                            if (genericStream.isOnPreview) {
+                                genericStream.getGlInterface().addMediaCodecRecordSurface(surface)
+                            }
+                        } else {
+                            Log.d(TAG, "WebRTC disconnected, removing Surface...")
+                            genericStream.getGlInterface().removeMediaCodecRecordSurface()
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     fun setOrientationMode(isVertical: Boolean) {
         val wasOnPreview = genericStream.isOnPreview
         genericStream.release()
@@ -193,6 +209,9 @@ class CameraFragment : Fragment(), ConnectChecker {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        webRtcSessionManager
+
         prepare()
         genericStream.getStreamClient().setReTries(10)
     }
@@ -212,12 +231,12 @@ class CameraFragment : Fragment(), ConnectChecker {
 
     override fun onDestroy() {
         super.onDestroy()
+        // --- WEBRTC: Disconnect when Fragment is destroyed ---
+        webRtcSessionManager.disconnect()
         genericStream.release()
     }
 
-    override fun onConnectionStarted(url: String) {
-
-    }
+    override fun onConnectionStarted(url: String) {}
 
     override fun onConnectionSuccess() {
         Log.d(TAG, "onConnection: Success")

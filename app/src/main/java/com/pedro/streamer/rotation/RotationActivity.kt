@@ -26,9 +26,11 @@ import android.view.MenuItem
 import android.view.MotionEvent
 import android.view.View
 import android.view.View.OnTouchListener
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.RequiresApi
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.graphics.scale
+import com.google.gson.Gson
 import com.pedro.encoder.input.sources.audio.MicrophoneSource
 import com.pedro.encoder.input.sources.video.BitmapSource
 import com.pedro.encoder.input.sources.video.BufferVideoSource
@@ -41,10 +43,14 @@ import com.pedro.streamer.utils.FilterMenu
 import com.pedro.streamer.utils.fitAppPadding
 import com.pedro.streamer.utils.toast
 import com.pedro.streamer.utils.updateMenuColor
+import com.pedro.streamer.webrtc.model.OverlayPeerAction
+import com.pedro.streamer.webrtc.session.WebRtcSessionManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import org.koin.android.ext.android.inject
+import kotlin.getValue
 
 
 /**
@@ -52,7 +58,8 @@ import kotlinx.coroutines.launch
  */
 @RequiresApi(Build.VERSION_CODES.LOLLIPOP)
 class RotationActivity : AppCompatActivity(), OnTouchListener {
-
+    private val webRtcSessionManager: WebRtcSessionManager by inject()
+    private var currentMute = false
   private val cameraFragment = CameraFragment.getInstance()
   private val filterMenu: FilterMenu by lazy { FilterMenu(this) }
   private var currentVideoSource: MenuItem? = null
@@ -83,6 +90,18 @@ class RotationActivity : AppCompatActivity(), OnTouchListener {
   override fun onOptionsItemSelected(item: MenuItem): Boolean {
     try {
       when (item.itemId) {
+          R.id.action_connect_remote -> {
+              WssConnectBottomSheet().show(supportFragmentManager, "WssConnect")
+              return true
+          }
+          R.id.test_remote_mic -> {
+                currentMute = !currentMute
+              val dictionary = Gson().toJson(currentMute)
+              webRtcSessionManager.sendAction(
+                  OverlayPeerAction.UPDATE_MICROPHONE_STATUS.value,
+                  dictionary
+              )
+          }
         R.id.video_source_camera1 -> {
           currentVideoSource = item.updateMenuColor(this, currentVideoSource)
           cameraFragment.genericStream.changeVideoSource(Camera1Source(applicationContext))

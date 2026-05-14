@@ -17,8 +17,29 @@
 package com.pedro.streamer
 
 import androidx.multidex.MultiDexApplication
+import com.pedro.streamer.di.appModule
+import com.pedro.streamer.webrtc.session.WebRtcSessionManager
+import org.koin.android.ext.koin.androidContext
+import org.koin.core.context.startKoin
+import org.webrtc.PeerConnectionFactory
 
 /**
  * Created by pedro on 10/10/23.
  */
-class App: MultiDexApplication()
+class App: MultiDexApplication() {
+    override fun onCreate() {
+        super.onCreate()
+
+        PeerConnectionFactory.initialize(
+            PeerConnectionFactory.InitializationOptions.builder(this)
+                .createInitializationOptions()
+        )
+
+        val koinApp = startKoin {
+            androidContext(this@App)
+            modules(appModule)
+        }
+
+        koinApp.koin.get<WebRtcSessionManager>()
+    }
+}
