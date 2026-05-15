@@ -26,12 +26,12 @@ class ExternalSurfaceCapturer(
 
     override fun startCapture(width: Int, height: Int, framerate: Int) {
         capturerObserver?.onCapturerStarted(true)
+        surfaceTextureHelper?.setTextureSize(width, height)
         surfaceTextureHelper?.startListening(this)
         val surfaceTexture = surfaceTextureHelper?.surfaceTexture
         if (surfaceTexture != null) {
             surfaceTexture.setDefaultBufferSize(width, height)
             surface = Surface(surfaceTexture)
-            Log.d("WebRTC_Test", "1. [WebRTC] Surface created successfully (Size: ${width}x${height})")
             onSurfaceReady(surface!!)
         }
     }
@@ -53,10 +53,6 @@ class ExternalSurfaceCapturer(
 
     override fun onFrame(frame: VideoFrame) {
         frameCount++
-        if (frameCount == 1 || frameCount % 30 == 0) {
-            Log.d("WebRTC_Test", "4. [WebRTC] Frame received from Pedro! Count: $frameCount")
-        }
-
         frame.buffer.retain()
         val validFrame = VideoFrame(frame.buffer, frame.rotation, System.nanoTime())
         capturerObserver?.onFrameCaptured(validFrame)

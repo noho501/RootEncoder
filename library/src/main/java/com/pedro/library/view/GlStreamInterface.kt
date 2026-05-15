@@ -295,8 +295,8 @@ class GlStreamInterface(private val context: Context): OnFrameAvailableListener,
       if (surfaceManagerEncoderRecord.makeCurrent()) {
         mainRender.drawScreenEncoder(w, h, orientation, streamOrientation,
           isStreamVerticalFlip, isStreamHorizontalFlip, streamViewPort)
-        // Fix: same timestamp fix for the dedicated record surface
-        surfaceManagerEncoderRecord.setPresentationTime(mainRender.getSurfaceTexture().timestamp)
+        val timestamp = mainRender.getSurfaceTexture().timestamp
+        surfaceManagerEncoderRecord.setPresentationTime(timestamp)
         surfaceManagerEncoderRecord.swapBuffer()
       }
     }
@@ -341,6 +341,8 @@ class GlStreamInterface(private val context: Context): OnFrameAvailableListener,
             mainRender.drawScreenPreview(info.config.width, info.config.height, info.config.isPortrait, info.config.aspectRatioMode, 0,
               info.config.verticalFlip, info.config.horizontalFlip, info.config.viewPort)
             info.surfaceManager.swapBuffer()
+            val timestamp = mainRender.getSurfaceTexture().timestamp
+            info.surfaceManager.setPresentationTime(timestamp)
           }
         }
       }
@@ -446,7 +448,6 @@ class GlStreamInterface(private val context: Context): OnFrameAvailableListener,
 
   fun updateMultiPreviewConfig(surface: Surface, config: MultiPreviewConfig): Boolean {
     val info = multiPreviewSurfaceManagers[surface] ?: return false
-
     info.config.width = if (config.width > 0) config.width else if (previewWidth == 0) encoderWidth else previewWidth
     info.config.height = if (config.height > 0) config.height else if (previewHeight == 0) encoderHeight else previewHeight
     info.config.horizontalFlip = config.horizontalFlip
@@ -454,7 +455,6 @@ class GlStreamInterface(private val context: Context): OnFrameAvailableListener,
     info.config.aspectRatioMode = config.aspectRatioMode
     info.config.isPortrait = config.isPortrait
     info.config.viewPort = config.viewPort
-
     return true
   }
 

@@ -24,6 +24,7 @@ import com.pedro.extrasources.CameraXSource
 import com.pedro.library.base.recording.RecordController
 import com.pedro.library.generic.GenericStream
 import com.pedro.library.util.BitrateAdapter
+import com.pedro.library.view.preview.MultiPreviewConfig
 import com.pedro.streamer.R
 import com.pedro.streamer.utils.PathUtils
 import com.pedro.streamer.utils.toast
@@ -187,7 +188,9 @@ class CameraFragment : Fragment(), ConnectChecker {
                         if (surface != null) {
                             Log.d(TAG, "Received Surface from WebRTC, attaching to RootEncoder...")
                             if (genericStream.isOnPreview) {
-                                genericStream.getGlInterface().addMediaCodecRecordSurface(surface)
+                                genericStream.addPreviewSurface(surface,
+                                    MultiPreviewConfig(width = width, height = height)
+                                )
                             }
                         } else {
                             Log.d(TAG, "WebRTC disconnected, removing Surface...")
@@ -209,8 +212,6 @@ class CameraFragment : Fragment(), ConnectChecker {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-
-        webRtcSessionManager
 
         prepare()
         genericStream.getStreamClient().setReTries(10)

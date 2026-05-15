@@ -185,7 +185,7 @@ class WebRtcSessionManagerImpl(
     private val stackCandidates: Stack<RemoteCandidate> = Stack()
     private val sp by lazy { PreferenceManager.getDefaultSharedPreferences(context) }
     private val codeKey by lazy { context.getString(R.string.wss_remote_code_key) }
-    private val channelCode get() = sp.getString(codeKey, null)
+    private val channelCode get() = sp.getString(codeKey, "1111-2222")
 
     private lateinit var dataMsgChannelHandler: DataChannelMessageHandler
     private val peerConnectionDelegate = resettableLazy {
@@ -230,6 +230,7 @@ class WebRtcSessionManagerImpl(
                     }
                 }
             }
+
             onPeerConnectionStateChange = { state ->
                 Log.d(TAG, "onPeerConnectionStateChange: $state")
                 when (state) {
@@ -270,6 +271,7 @@ class WebRtcSessionManagerImpl(
 
     init {
         Log.d(TAG, "WebRtcSessionManagerImpl: init")
+
         dataMsgChannelHandler = DataChannelMessageHandler(
             sendDataMsg = { msg ->
                 peerConnection.sendDataMessage(msg)
