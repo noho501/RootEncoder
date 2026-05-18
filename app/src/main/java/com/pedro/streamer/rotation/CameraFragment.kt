@@ -28,12 +28,12 @@ import com.pedro.library.view.preview.MultiPreviewConfig
 import com.pedro.streamer.R
 import com.pedro.streamer.utils.PathUtils
 import com.pedro.streamer.utils.toast
+import com.pedro.streamer.webrtc.session.WebRtcSessionManager
 import kotlinx.coroutines.launch
+import org.koin.android.ext.android.inject
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
-import com.pedro.streamer.webrtc.session.WebRtcSessionManager
-import org.koin.android.ext.android.inject
 
 class CameraFragment : Fragment(), ConnectChecker {
     val TAG = "CameraFragment"
@@ -50,9 +50,9 @@ class CameraFragment : Fragment(), ConnectChecker {
     private lateinit var surfaceView: SurfaceView
     private lateinit var bStartStop: ImageView
     private lateinit var txtBitrate: TextView
-    val width = 640
-    val height = 480
-    val vBitrate = 1200 * 1000
+    val width = 1280
+    val height = 720
+    val vBitrate = 3000 * 1000
     private var rotation = 0
     private val sampleRate = 32000
     private val isStereo = true
@@ -92,8 +92,11 @@ class CameraFragment : Fragment(), ConnectChecker {
                 // --- WEBRTC: Re-attach Surface when RootEncoder preview starts ---
                 currentWebRtcSurface?.let {
                     surfaceView.postDelayed({
-                        genericStream.getGlInterface().addMediaCodecRecordSurface(it)
-                    }, 500) // Small delay to ensure OpenGL context is fully initialized
+                        genericStream.addPreviewSurface(
+                            it,
+                            MultiPreviewConfig(width = width, height = height)
+                        )
+                    }, 500)
                 }
             }
 
@@ -188,7 +191,8 @@ class CameraFragment : Fragment(), ConnectChecker {
                         if (surface != null) {
                             Log.d(TAG, "Received Surface from WebRTC, attaching to RootEncoder...")
                             if (genericStream.isOnPreview) {
-                                genericStream.addPreviewSurface(surface,
+                                genericStream.addPreviewSurface(
+                                    surface,
                                     MultiPreviewConfig(width = width, height = height)
                                 )
                             }

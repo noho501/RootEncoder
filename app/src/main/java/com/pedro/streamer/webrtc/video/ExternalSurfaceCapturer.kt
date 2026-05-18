@@ -25,14 +25,14 @@ class ExternalSurfaceCapturer(
     }
 
     override fun startCapture(width: Int, height: Int, framerate: Int) {
-        capturerObserver?.onCapturerStarted(true)
-        surfaceTextureHelper?.setTextureSize(width, height)
-        surfaceTextureHelper?.startListening(this)
-        val surfaceTexture = surfaceTextureHelper?.surfaceTexture
-        if (surfaceTexture != null) {
+        surfaceTextureHelper?.let { helper ->
+            helper.setTextureSize(width, height)
+            val surfaceTexture = helper.surfaceTexture
             surfaceTexture.setDefaultBufferSize(width, height)
-            surface = Surface(surfaceTexture)
-            onSurfaceReady(surface!!)
+            val newSurface = Surface(surfaceTexture)
+            surface = newSurface
+            onSurfaceReady(newSurface)
+            helper.startListening(this)
         }
     }
 
