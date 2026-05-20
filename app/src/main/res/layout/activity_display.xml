@@ -5,52 +5,57 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent">
 
-  <SurfaceView
-      android:layout_width="match_parent"
-      android:layout_height="match_parent"
-      android:id="@+id/surfaceView"
-      />
+    <SurfaceView
+        android:id="@+id/surfaceView"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent" />
 
-  <EditText
-      android:hint="@string/hint_protocol"
-      android:textColor="@color/appColor"
-      android:textColorHint="@color/appColor"
-      android:inputType="textUri"
-      android:layout_width="match_parent"
-      android:layout_height="wrap_content"
-      android:gravity="center"
-      android:layout_margin="20dp"
-      android:id="@+id/et_rtp_url"
-      app:layout_constraintTop_toTopOf="parent"
-      />
+    <EditText
+        android:id="@+id/et_rtp_url"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_margin="20dp"
+        android:gravity="center"
+        android:hint="@string/hint_protocol"
+        android:inputType="textUri"
+        android:textColor="@color/appColor"
+        android:textColorHint="@color/appColor"
+        app:layout_constraintTop_toTopOf="parent" />
 
-  <androidx.constraintlayout.widget.ConstraintLayout
-      android:layout_width="match_parent"
-      android:layout_height="wrap_content"
-      app:layout_constraintBottom_toBottomOf="parent"
-      android:layout_margin="16dp"
-      >
+    <androidx.constraintlayout.widget.ConstraintLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_margin="16dp"
+        app:layout_constraintBottom_toBottomOf="parent">
 
-    <ImageView
-        android:src="@drawable/record_icon"
-        android:layout_width="64dp"
-        android:layout_height="64dp"
-        android:id="@+id/b_record"
+        <ImageView
+            android:id="@+id/b_record"
+            android:layout_width="64dp"
+            android:layout_height="64dp"
+            android:contentDescription="@string/app_name"
+            android:src="@drawable/record_icon"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintEnd_toStartOf="@id/b_start_stop"
+            app:layout_constraintHorizontal_chainStyle="spread"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toTopOf="parent" />
+
+        <ImageView
+            android:id="@+id/b_start_stop"
+            android:layout_width="98dp"
+            android:layout_height="98dp"
+            android:src="@drawable/stream_icon"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent" />
+    </androidx.constraintlayout.widget.ConstraintLayout>
+
+    <androidx.appcompat.widget.Toolbar
+        android:id="@+id/toolbar"
+        android:layout_width="@dimen/toolbar_width"
+        android:layout_height="?attr/actionBarSize"
+        app:layout_constraintRight_toRightOf="parent"
         app:layout_constraintTop_toTopOf="parent"
-        app:layout_constraintBottom_toBottomOf="parent"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toStartOf="@id/b_start_stop"
-        app:layout_constraintHorizontal_chainStyle="spread"
-        />
-
-  <ImageView
-      android:src="@drawable/stream_icon"
-      android:layout_width="98dp"
-      android:layout_height="98dp"
-      android:id="@+id/b_start_stop"
-      app:layout_constraintBottom_toBottomOf="parent"
-      app:layout_constraintEnd_toEndOf="parent"
-      app:layout_constraintStart_toStartOf="parent"
-      />
-  </androidx.constraintlayout.widget.ConstraintLayout>
+        app:popupTheme="@style/ThemeOverlay.AppCompat.Light"
+        app:theme="@style/ThemeOverlay.AppCompat.Dark.ActionBar" />
 </androidx.constraintlayout.widget.ConstraintLayout>

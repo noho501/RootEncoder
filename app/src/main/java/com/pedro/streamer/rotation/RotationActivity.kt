@@ -26,7 +26,6 @@ import android.view.MenuItem
 import android.view.MotionEvent
 import android.view.View
 import android.view.View.OnTouchListener
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.RequiresApi
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.graphics.scale
@@ -50,7 +49,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.koin.android.ext.android.inject
-import kotlin.getValue
 
 
 /**
@@ -60,120 +58,138 @@ import kotlin.getValue
 class RotationActivity : AppCompatActivity(), OnTouchListener {
     private val webRtcSessionManager: WebRtcSessionManager by inject()
     private var currentMute = false
-  private val cameraFragment = CameraFragment.getInstance()
-  private val filterMenu: FilterMenu by lazy { FilterMenu(this) }
-  private var currentVideoSource: MenuItem? = null
-  private var currentAudioSource: MenuItem? = null
-  private var currentOrientation: MenuItem? = null
-  private var currentFilter: MenuItem? = null
+    private val cameraFragment = CameraFragment.getInstance()
+    private val filterMenu: FilterMenu by lazy { FilterMenu(this) }
+    private var currentVideoSource: MenuItem? = null
+    private var currentAudioSource: MenuItem? = null
+    private var currentOrientation: MenuItem? = null
+    private var currentFilter: MenuItem? = null
 
-  override fun onCreate(savedInstanceState: Bundle?) {
-    super.onCreate(savedInstanceState)
-    setContentView(R.layout.rotation_activity)
-    fitAppPadding()
-    supportFragmentManager.beginTransaction().add(R.id.container, cameraFragment).commit()
-  }
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        setContentView(R.layout.rotation_activity)
+        val toolbar = findViewById<androidx.appcompat.widget.Toolbar>(R.id.toolbar)
+        setSupportActionBar(toolbar)
+        fitAppPadding()
+        supportFragmentManager.beginTransaction().add(R.id.container, cameraFragment).commit()
+    }
 
-  override fun onCreateOptionsMenu(menu: Menu): Boolean {
-    menuInflater.inflate(R.menu.rotation_menu, menu)
-    val defaultVideoSource = menu.findItem(R.id.video_source_camera2)
-    val defaultAudioSource = menu.findItem(R.id.audio_source_microphone)
-    val defaultOrientation = menu.findItem(R.id.orientation_horizontal)
-    val defaultFilter = menu.findItem(R.id.no_filter)
-    currentVideoSource = defaultVideoSource.updateMenuColor(this, currentVideoSource)
-    currentAudioSource = defaultAudioSource.updateMenuColor(this, currentAudioSource)
-    currentOrientation = defaultOrientation.updateMenuColor(this, currentOrientation)
-    currentFilter = defaultFilter.updateMenuColor(this, currentFilter)
-    return true
-  }
+    override fun onCreateOptionsMenu(menu: Menu): Boolean {
+        menuInflater.inflate(R.menu.rotation_menu, menu)
+        val defaultVideoSource = menu.findItem(R.id.video_source_camera2)
+        val defaultAudioSource = menu.findItem(R.id.audio_source_microphone)
+        val defaultOrientation = menu.findItem(R.id.orientation_horizontal)
+        val defaultFilter = menu.findItem(R.id.no_filter)
+        currentVideoSource = defaultVideoSource.updateMenuColor(this, currentVideoSource)
+        currentAudioSource = defaultAudioSource.updateMenuColor(this, currentAudioSource)
+        currentOrientation = defaultOrientation.updateMenuColor(this, currentOrientation)
+        currentFilter = defaultFilter.updateMenuColor(this, currentFilter)
+        return true
+    }
 
-  override fun onOptionsItemSelected(item: MenuItem): Boolean {
-    try {
-      when (item.itemId) {
-          R.id.action_connect_remote -> {
-              WssConnectBottomSheet().show(supportFragmentManager, "WssConnect")
-              return true
-          }
-          R.id.test_remote_mic -> {
-                currentMute = !currentMute
-              val dictionary = Gson().toJson(currentMute)
-              webRtcSessionManager.sendAction(
-                  OverlayPeerAction.UPDATE_MICROPHONE_STATUS.value,
-                  dictionary
-              )
-          }
-        R.id.video_source_camera1 -> {
-          currentVideoSource = item.updateMenuColor(this, currentVideoSource)
-          cameraFragment.genericStream.changeVideoSource(Camera1Source(applicationContext))
-        }
-        R.id.video_source_camera2 -> {
-          currentVideoSource = item.updateMenuColor(this, currentVideoSource)
-          cameraFragment.genericStream.changeVideoSource(Camera2Source(applicationContext))
-        }
-        R.id.video_source_camerax -> {
-          currentVideoSource = item.updateMenuColor(this, currentVideoSource)
-          cameraFragment.genericStream.changeVideoSource(CameraXSource(applicationContext))
-        }
-        R.id.video_source_camera_uvc -> {
-          currentVideoSource = item.updateMenuColor(this, currentVideoSource)
-          cameraFragment.genericStream.changeVideoSource(CameraUvcSource())
-        }
-        R.id.video_source_bitmap -> {
-          currentVideoSource = item.updateMenuColor(this, currentVideoSource)
-          val bitmap = BitmapFactory.decodeResource(resources, R.mipmap.ic_launcher)
-          cameraFragment.genericStream.changeVideoSource(BitmapSource(bitmap))
-        }
-        R.id.video_source_buffer -> {
-          currentVideoSource = item.updateMenuColor(this, currentVideoSource)
-          val bitmap = BitmapFactory.decodeResource(resources, R.mipmap.ic_launcher)
-          val data = bitmapToRgba(bitmap.scale(cameraFragment.width, cameraFragment.height))
-          val source = BufferVideoSource(BufferVideoSource.Format.ARGB, cameraFragment.vBitrate)
-          cameraFragment.genericStream.changeVideoSource(source)
-          CoroutineScope(Dispatchers.IO).launch {
-            while (cameraFragment.genericStream.videoSource is BufferVideoSource) {
-              source.setBuffer(data.clone())
-              delay(1000 / 30)
+    override fun onOptionsItemSelected(item: MenuItem): Boolean {
+        try {
+            when (item.itemId) {
+                R.id.action_connect_remote -> {
+                    WssConnectBottomSheet().show(supportFragmentManager, "WssConnect")
+                    return true
+                }
+
+                R.id.test_remote_mic -> {
+                    currentMute = !currentMute
+                    val dictionary = Gson().toJson(currentMute)
+                    webRtcSessionManager.sendAction(
+                        OverlayPeerAction.UPDATE_MICROPHONE_STATUS.value,
+                        dictionary
+                    )
+                }
+
+                R.id.video_source_camera1 -> {
+                    currentVideoSource = item.updateMenuColor(this, currentVideoSource)
+                    cameraFragment.genericStream.changeVideoSource(Camera1Source(applicationContext))
+                }
+
+                R.id.video_source_camera2 -> {
+                    currentVideoSource = item.updateMenuColor(this, currentVideoSource)
+                    cameraFragment.genericStream.changeVideoSource(Camera2Source(applicationContext))
+                }
+
+                R.id.video_source_camerax -> {
+                    currentVideoSource = item.updateMenuColor(this, currentVideoSource)
+                    cameraFragment.genericStream.changeVideoSource(CameraXSource(applicationContext))
+                }
+
+                R.id.video_source_camera_uvc -> {
+                    currentVideoSource = item.updateMenuColor(this, currentVideoSource)
+                    cameraFragment.genericStream.changeVideoSource(CameraUvcSource())
+                }
+
+                R.id.video_source_bitmap -> {
+                    currentVideoSource = item.updateMenuColor(this, currentVideoSource)
+                    val bitmap = BitmapFactory.decodeResource(resources, R.mipmap.ic_launcher)
+                    cameraFragment.genericStream.changeVideoSource(BitmapSource(bitmap))
+                }
+
+                R.id.video_source_buffer -> {
+                    currentVideoSource = item.updateMenuColor(this, currentVideoSource)
+                    val bitmap = BitmapFactory.decodeResource(resources, R.mipmap.ic_launcher)
+                    val data =
+                        bitmapToRgba(bitmap.scale(cameraFragment.width, cameraFragment.height))
+                    val source =
+                        BufferVideoSource(BufferVideoSource.Format.ARGB, cameraFragment.vBitrate)
+                    cameraFragment.genericStream.changeVideoSource(source)
+                    CoroutineScope(Dispatchers.IO).launch {
+                        while (cameraFragment.genericStream.videoSource is BufferVideoSource) {
+                            source.setBuffer(data.clone())
+                            delay(1000 / 30)
+                        }
+                    }
+                }
+
+                R.id.audio_source_microphone -> {
+                    currentAudioSource = item.updateMenuColor(this, currentAudioSource)
+                    cameraFragment.genericStream.changeAudioSource(MicrophoneSource())
+                }
+
+                R.id.orientation_horizontal -> {
+                    currentOrientation = item.updateMenuColor(this, currentOrientation)
+                    cameraFragment.setOrientationMode(false)
+                }
+
+                R.id.orientation_vertical -> {
+                    currentOrientation = item.updateMenuColor(this, currentOrientation)
+                    cameraFragment.setOrientationMode(true)
+                }
+
+                else -> {
+                    val result = filterMenu.onOptionsItemSelected(
+                        item,
+                        cameraFragment.genericStream.getGlInterface()
+                    )
+                    if (result) currentFilter = item.updateMenuColor(this, currentFilter)
+                    return result
+                }
             }
-          }
+        } catch (e: IllegalArgumentException) {
+            toast("Change source error: ${e.message}")
         }
-        R.id.audio_source_microphone -> {
-          currentAudioSource = item.updateMenuColor(this, currentAudioSource)
-          cameraFragment.genericStream.changeAudioSource(MicrophoneSource())
-        }
-        R.id.orientation_horizontal -> {
-          currentOrientation = item.updateMenuColor(this, currentOrientation)
-          cameraFragment.setOrientationMode(false)
-        }
-        R.id.orientation_vertical -> {
-          currentOrientation = item.updateMenuColor(this, currentOrientation)
-          cameraFragment.setOrientationMode(true)
-        }
-        else -> {
-          val result = filterMenu.onOptionsItemSelected(item, cameraFragment.genericStream.getGlInterface())
-          if (result) currentFilter = item.updateMenuColor(this, currentFilter)
-          return result
-        }
-      }
-    } catch (e: IllegalArgumentException) {
-      toast("Change source error: ${e.message}")
+        return super.onOptionsItemSelected(item)
     }
-    return super.onOptionsItemSelected(item)
-  }
 
-  private fun bitmapToRgba(bitmap: Bitmap): IntArray {
-    require(bitmap.config == Bitmap.Config.ARGB_8888) { "Bitmap must be in ARGB_8888 format" }
-    val pixels = IntArray(bitmap.width * bitmap.height)
-    bitmap.getPixels(pixels, 0, bitmap.width, 0, 0, bitmap.width, bitmap.height)
-    return pixels
-  }
-
-  @SuppressLint("ClickableViewAccessibility")
-  override fun onTouch(view: View, motionEvent: MotionEvent): Boolean {
-    if (filterMenu.spriteGestureController.spriteTouched(view, motionEvent)) {
-      filterMenu.spriteGestureController.moveSprite(view, motionEvent)
-      filterMenu.spriteGestureController.scaleSprite(motionEvent)
-      return true
+    private fun bitmapToRgba(bitmap: Bitmap): IntArray {
+        require(bitmap.config == Bitmap.Config.ARGB_8888) { "Bitmap must be in ARGB_8888 format" }
+        val pixels = IntArray(bitmap.width * bitmap.height)
+        bitmap.getPixels(pixels, 0, bitmap.width, 0, 0, bitmap.width, bitmap.height)
+        return pixels
     }
-    return false
-  }
+
+    @SuppressLint("ClickableViewAccessibility")
+    override fun onTouch(view: View, motionEvent: MotionEvent): Boolean {
+        if (filterMenu.spriteGestureController.spriteTouched(view, motionEvent)) {
+            filterMenu.spriteGestureController.moveSprite(view, motionEvent)
+            filterMenu.spriteGestureController.scaleSprite(motionEvent)
+            return true
+        }
+        return false
+    }
 }

@@ -39,6 +39,7 @@ interface WebRtcSessionManager {
   val updateStateRemote: SharedFlow<Int>
 
   val webrtcSurfaceFlow: StateFlow<Surface?>
+  val bitrateFlow: SharedFlow<Long>
 
   fun onSessionScreenReady()
 

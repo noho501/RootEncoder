@@ -46,19 +46,19 @@ import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import org.webrtc.IceCandidate
 import org.webrtc.MediaConstraints
 import org.webrtc.MediaStreamTrack
 import org.webrtc.PeerConnection
+import org.webrtc.RtpParameters
 import org.webrtc.SessionDescription
 import org.webrtc.SurfaceTextureHelper
 import org.webrtc.VideoCapturer
 import org.webrtc.VideoTrack
 import java.util.Stack
 import java.util.UUID
-
-private const val ICE_SEPARATOR = '$'
 
 class WebRtcSessionManagerImpl(
     private val context: Context,
@@ -92,6 +92,11 @@ class WebRtcSessionManagerImpl(
     private val _webrtcSurfaceFlow = MutableStateFlow<Surface?>(null)
     override val webrtcSurfaceFlow: StateFlow<Surface?> = _webrtcSurfaceFlow
 
+    private val _bitrateFlow = MutableSharedFlow<Long>()
+    override val bitrateFlow: SharedFlow<Long> = _bitrateFlow
+
+    private var lastBytesSent: Long = 0
+    private var lastStatsTime: Long = 0
 
     // declaring video constraints and setting OfferToReceiveVideo to true
     // this step is mandatory to create valid offer and answer
@@ -219,7 +224,7 @@ class WebRtcSessionManagerImpl(
         ).apply {
             onIceStateChange = { state ->
                 //Dispose the signalingClient if the peer is disconnected, failed or closed.
-                when(state){
+                when (state) {
                     PeerConnection.IceConnectionState.DISCONNECTED,
                     PeerConnection.IceConnectionState.FAILED,
                     PeerConnection.IceConnectionState.CLOSED -> {
@@ -232,16 +237,17 @@ class WebRtcSessionManagerImpl(
             }
 
             onPeerConnectionStateChange = { state ->
-                Log.d(TAG, "onPeerConnectionStateChange: $state")
                 when (state) {
                     PeerConnection.PeerConnectionState.CONNECTED -> {
                         _isDataChannelReady.value = true
                     }
+
                     PeerConnection.PeerConnectionState.DISCONNECTED,
                     PeerConnection.PeerConnectionState.FAILED,
                     PeerConnection.PeerConnectionState.CLOSED -> {
                         _isDataChannelReady.value = false
                     }
+
                     else -> {
                         _isDataChannelReady.value = false
                     }
@@ -259,18 +265,57 @@ class WebRtcSessionManagerImpl(
             }
 
             try {
-                connection.addTrack(localVideoTrack)
-                Log.d(TAG, "Đã gắn localVideoTrack vào PeerConnection thành công!")
-            } catch (e: Exception) {
-                Log.e(TAG, "Lỗi gắn track: ${e.message}")
+                val sender = connection.addTrack(localVideoTrack)
+                val parameters = sender.parameters
+                parameters.encodings.forEach { encoding ->
+                    encoding.minBitrateBps = 2000 * 1000 // 2 Mbps
+                    encoding.maxBitrateBps = 4000 * 1000 // 4 Mbps
+                    encoding.maxFramerate = 30
+                    encoding.scaleResolutionDownBy = 1.0
+                }
+                parameters.degradationPreference =
+                    RtpParameters.DegradationPreference.MAINTAIN_RESOLUTION
+                sender.parameters = parameters
+
+//                startStatsCollection()
+            } catch (_: Exception) {
+            }
+        }
+    }
+
+    private fun startStatsCollection() {
+        sessionManagerScope.launch {
+            while (isActive) {
+                kotlinx.coroutines.delay(2000)
+                if (peerConnectionDelegate.isInitialized()) {
+                    peerConnection.connection.getStats { report ->
+                        val now = System.currentTimeMillis()
+                        val outboundVideoStats = report.statsMap.values.find { stats ->
+                            stats.type == "outbound-rtp" && stats.members["kind"] == "video"
+                        }
+                        if (outboundVideoStats != null) {
+                            val bytesSent = outboundVideoStats.members["bytesSent"] as? Long ?: 0L
+                            if (lastBytesSent > 0 && lastStatsTime > 0) {
+                                val diffBytes = bytesSent - lastBytesSent
+                                val diffTime = now - lastStatsTime
+                                if (diffTime > 0) {
+                                    val bitrate = (diffBytes * 8 * 1000) / diffTime // bps
+                                    sessionManagerScope.launch {
+                                        _bitrateFlow.emit(bitrate)
+                                    }
+                                }
+                            }
+                            lastBytesSent = bytesSent
+                            lastStatsTime = now
+                        }
+                    }
+                }
             }
         }
     }
     private val peerConnection by peerConnectionDelegate
 
-
     init {
-        Log.d(TAG, "WebRtcSessionManagerImpl: init")
 
         dataMsgChannelHandler = DataChannelMessageHandler(
             sendDataMsg = { msg ->
@@ -359,7 +404,6 @@ class WebRtcSessionManagerImpl(
     }
 
     override fun sendAction(action: Int, extraData: String?) {
-        Log.d(TAG, "sendAction: $action, extraData: $extraData")
         val mess = DataChannelMessage(
             isHost = true,
             message = "[MainApp] Send action: ${OverlayPeerAction.entries.firstOrNull { it.value == action }?.name}",
@@ -371,7 +415,6 @@ class WebRtcSessionManagerImpl(
     }
 
     private suspend fun sendOffer() {
-        Log.d(TAG, "sendOffer")
         val offer = peerConnection.createOffer().getOrThrow()
         val result = peerConnection.setLocalDescription(offer)
         result.onSuccess {
@@ -380,7 +423,6 @@ class WebRtcSessionManagerImpl(
     }
 
     private suspend fun sendAnswer() {
-        Log.d(TAG, "sendAnswer")
         val answer = peerConnection.createAnswer().getOrThrow()
         val result = peerConnection.setLocalDescription(answer)
         result.onSuccess {
@@ -408,9 +450,11 @@ class WebRtcSessionManagerImpl(
     }
 
     private fun sendIceCandidate(candidate: RemoteCandidate) {
-        Log.d(TAG, "sendIceCandidate: $candidate")
         if (isLocalDescriptionSetup) {
-            signalingClient.sendCommand(MessageType.ICE_CANDIDATE, GsonUtils.objectToJson(candidate))
+            signalingClient.sendCommand(
+                MessageType.ICE_CANDIDATE,
+                GsonUtils.objectToJson(candidate)
+            )
         } else {
             stackCandidates.push(candidate)
         }
@@ -506,6 +550,9 @@ class WebRtcSessionManagerImpl(
 
     // Hàm nhận lệnh TẮT từ Activity
     override fun stopLocalVideoCapture() {
-        try { videoCapturer.stopCapture() } catch (e: Exception) {}
+        try {
+            videoCapturer.stopCapture()
+        } catch (e: Exception) {
+        }
     }
 }
