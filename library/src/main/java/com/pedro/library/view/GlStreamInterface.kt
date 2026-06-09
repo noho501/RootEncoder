@@ -26,6 +26,7 @@ import android.os.Handler
 import android.os.HandlerThread
 import android.view.Surface
 import androidx.annotation.RequiresApi
+import com.pedro.common.TimeUtils
 import com.pedro.common.newSingleThreadExecutor
 import com.pedro.common.secureSubmit
 import com.pedro.encoder.input.gl.FilterAction
@@ -223,12 +224,12 @@ class GlStreamInterface(private val context: Context): OnFrameAvailableListener,
 
   override fun stop() {
     running.set(false)
+    forceRender.stop()
     surfaceHandlerThread?.quitSafely()
     surfaceHandlerThread = null
     threadQueue.clear()
     executor?.shutdownNow()
     executor = null
-    forceRender.stop()
     sensorRotationManager.stop()
     surfaceManagerPhoto.release()
     surfaceManagerEncoder.release()
@@ -264,6 +265,7 @@ class GlStreamInterface(private val context: Context): OnFrameAvailableListener,
       mainRender.drawSource()
       surfaceManager.swapBuffer()
     }
+    val timestamp = TimeUtils.getCurrentTimeNano()
 
     val orientation = when (orientationForced) {
       OrientationForced.PORTRAIT -> true
@@ -285,7 +287,7 @@ class GlStreamInterface(private val context: Context): OnFrameAvailableListener,
       if (surfaceManagerEncoder.makeCurrent()) {
         mainRender.drawScreenEncoder(w, h, orientation, streamOrientation,
           isStreamVerticalFlip, isStreamHorizontalFlip, streamViewPort)
-        surfaceManagerEncoder.setPresentationTime(mainRender.getSurfaceTexture().timestamp)
+        surfaceManagerEncoder.setPresentationTime(timestamp)
         surfaceManagerEncoder.swapBuffer()
       }
     }
@@ -296,7 +298,7 @@ class GlStreamInterface(private val context: Context): OnFrameAvailableListener,
       if (surfaceManagerEncoderRecord.makeCurrent()) {
         mainRender.drawScreenEncoder(w, h, orientation, streamOrientation,
           isStreamVerticalFlip, isStreamHorizontalFlip, streamViewPort)
-        val timestamp = mainRender.getSurfaceTexture().timestamp
+        // Fix: same timestamp fix for the dedicated record surface
         surfaceManagerEncoderRecord.setPresentationTime(timestamp)
         surfaceManagerEncoderRecord.swapBuffer()
       }
@@ -449,6 +451,7 @@ class GlStreamInterface(private val context: Context): OnFrameAvailableListener,
 
   fun updateMultiPreviewConfig(surface: Surface, config: MultiPreviewConfig): Boolean {
     val info = multiPreviewSurfaceManagers[surface] ?: return false
+
     info.config.width = if (config.width > 0) config.width else if (previewWidth == 0) encoderWidth else previewWidth
     info.config.height = if (config.height > 0) config.height else if (previewHeight == 0) encoderHeight else previewHeight
     info.config.horizontalFlip = config.horizontalFlip
@@ -456,6 +459,7 @@ class GlStreamInterface(private val context: Context): OnFrameAvailableListener,
     info.config.aspectRatioMode = config.aspectRatioMode
     info.config.isPortrait = config.isPortrait
     info.config.viewPort = config.viewPort
+
     return true
   }
 
