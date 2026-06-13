@@ -20,6 +20,7 @@ import android.content.Context
 import android.graphics.Point
 import android.graphics.SurfaceTexture
 import android.graphics.SurfaceTexture.OnFrameAvailableListener
+import android.opengl.EGLContext
 import android.os.Build
 import android.os.Handler
 import android.os.HandlerThread
@@ -563,5 +564,9 @@ class GlStreamInterface(private val context: Context): OnFrameAvailableListener,
 
   fun setStreamViewPort(viewPort: ViewPort?) {
     streamViewPort = viewPort
+  }
+
+  fun getSharedEglContext(): EGLContext? {
+    return surfaceManager.eglContext
   }
 }
