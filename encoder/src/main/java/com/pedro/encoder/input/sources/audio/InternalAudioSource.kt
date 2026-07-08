@@ -29,6 +29,7 @@ import com.pedro.common.debug.DebugEvent
 import com.pedro.common.debug.DebugLevel
 import com.pedro.common.debug.DebugListener
 import com.pedro.encoder.Frame
+import com.pedro.encoder.audio.AudioEncoder
 import com.pedro.encoder.input.audio.CustomAudioEffect
 import com.pedro.encoder.input.audio.GetMicrophoneData
 import com.pedro.encoder.input.audio.MicrophoneManager
