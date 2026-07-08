@@ -119,7 +119,9 @@ class MixAudioSource(
                 "sampleRate" to sampleRate,
                 "channels" to (if (isStereo) 2 else 1),
                 "audioSource" to microphoneAudioSource,
-                "mode" to "MIX"
+                "mode" to "MIX",
+                "mediaProjectionAvailable" to true,
+                "audioPlaybackCaptureEnabled" to true
             ))
             microphone.start()
         }

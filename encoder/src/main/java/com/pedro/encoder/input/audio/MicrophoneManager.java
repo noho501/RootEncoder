@@ -17,8 +17,11 @@
 package com.pedro.encoder.input.audio;
 
 import android.annotation.SuppressLint;
+import android.app.Application;
+import android.content.Context;
 import android.media.AudioDeviceInfo;
 import android.media.AudioFormat;
+import android.media.AudioManager;
 import android.media.AudioPlaybackCaptureConfiguration;
 import android.media.AudioRecord;
 import android.media.MediaRecorder;
@@ -78,6 +81,8 @@ public class MicrophoneManager {
   private long lastAudioReadTs = 0L;
   private int lastMicReadSize = 0;
   private int lastInternalReadSize = 0;
+  private int lastMicReadResult = 0;
+  private int lastInternalReadResult = 0;
 
   enum Mode {
     MICROPHONE, INTERNAL, MIX
@@ -111,6 +116,108 @@ public class MicrophoneManager {
       return "ERROR_DEAD_OBJECT";
     }
     return "UNKNOWN(" + error + ")";
+  }
+
+  @Nullable
+  private static Context getApplicationContext() {
+    try {
+      Application application = (Application) Class.forName("android.app.ActivityThread")
+          .getMethod("currentApplication")
+          .invoke(null);
+      return application != null ? application.getApplicationContext() : null;
+    } catch (Exception ignored) {
+      return null;
+    }
+  }
+
+  @Nullable
+  private static AudioManager getAudioManager() {
+    Context context = getApplicationContext();
+    if (context == null) return null;
+    Object service = context.getSystemService(Context.AUDIO_SERVICE);
+    return service instanceof AudioManager ? (AudioManager) service : null;
+  }
+
+  private static String getAudioModeName(int mode) {
+    if (mode == AudioManager.MODE_NORMAL) return "MODE_NORMAL";
+    if (mode == AudioManager.MODE_RINGTONE) return "MODE_RINGTONE";
+    if (mode == AudioManager.MODE_IN_CALL) return "MODE_IN_CALL";
+    if (mode == AudioManager.MODE_IN_COMMUNICATION) return "MODE_IN_COMMUNICATION";
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && mode == AudioManager.MODE_CALL_SCREENING) {
+      return "MODE_CALL_SCREENING";
+    }
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && mode == AudioManager.MODE_CALL_REDIRECT) {
+      return "MODE_CALL_REDIRECT";
+    }
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && mode == AudioManager.MODE_COMMUNICATION_REDIRECT) {
+      return "MODE_COMMUNICATION_REDIRECT";
+    }
+    return "UNKNOWN(" + mode + ")";
+  }
+
+  @Nullable
+  private AudioRecord getRouteAudioRecord() {
+    if (mode == Mode.MICROPHONE) return audioRecord;
+    if (mode == Mode.INTERNAL) return audioRecordDevice;
+    return audioRecordDevice != null ? audioRecordDevice : audioRecord;
+  }
+
+  private void putAudioRuntimeState(Map<String, Object> payload) {
+    AudioManager audioManager = getAudioManager();
+    if (audioManager != null) {
+      int audioMode = audioManager.getMode();
+      payload.put("audioMode", getAudioModeName(audioMode));
+    } else {
+      payload.put("audioMode", "UNKNOWN");
+    }
+
+    Context context = getApplicationContext();
+    payload.put("foregroundPackage", context != null ? context.getPackageName() : "unknown");
+
+    boolean speaker = false;
+    boolean wiredHeadset = false;
+    boolean bluetooth = false;
+    AudioRecord routedAudioRecord = getRouteAudioRecord();
+    if (routedAudioRecord != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+      AudioDeviceInfo routedDevice = routedAudioRecord.getRoutedDevice();
+      if (routedDevice != null) {
+        int type = routedDevice.getType();
+        speaker = type == AudioDeviceInfo.TYPE_BUILTIN_SPEAKER
+            || type == AudioDeviceInfo.TYPE_BUILTIN_SPEAKER_SAFE;
+        wiredHeadset = type == AudioDeviceInfo.TYPE_WIRED_HEADPHONES
+            || type == AudioDeviceInfo.TYPE_WIRED_HEADSET
+            || type == AudioDeviceInfo.TYPE_USB_HEADSET
+            || type == AudioDeviceInfo.TYPE_USB_DEVICE;
+        bluetooth = type == AudioDeviceInfo.TYPE_BLUETOOTH_A2DP
+            || type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO;
+      }
+    } else if (audioManager != null) {
+      speaker = audioManager.isSpeakerphoneOn();
+      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+        AudioDeviceInfo[] devices = audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS);
+        for (AudioDeviceInfo device : devices) {
+          int type = device.getType();
+          if (type == AudioDeviceInfo.TYPE_BLUETOOTH_A2DP
+              || type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO) {
+            bluetooth = true;
+          }
+          if (type == AudioDeviceInfo.TYPE_WIRED_HEADPHONES
+              || type == AudioDeviceInfo.TYPE_WIRED_HEADSET
+              || type == AudioDeviceInfo.TYPE_USB_HEADSET
+              || type == AudioDeviceInfo.TYPE_USB_DEVICE) {
+            wiredHeadset = true;
+          }
+        }
+      } else {
+        wiredHeadset = audioManager.isWiredHeadsetOn();
+        bluetooth = audioManager.isBluetoothScoOn() || audioManager.isBluetoothA2dpOn();
+      }
+    }
+    payload.put("speaker", speaker);
+    payload.put("wiredHeadset", wiredHeadset);
+    payload.put("bluetooth", bluetooth);
+    payload.put("mediaProjectionAvailable", audioRecordDevice != null);
+    payload.put("audioPlaybackCaptureEnabled", mode == Mode.INTERNAL || mode == Mode.MIX);
   }
 
   public void setCustomAudioEffect(CustomAudioEffect customAudioEffect) {
@@ -164,6 +271,8 @@ public class MicrophoneManager {
       payload.put("bufferSize", pcmBuffer.length);
       payload.put("audioSource", audioSource);
       payload.put("mode", mode.name());
+      payload.put("recordState", audioRecord.getState());
+      payload.put("sessionId", audioRecord.getAudioSessionId());
       emitDebug(DebugLevel.INFO, DebugCategory.AUDIO, "AudioRecordCreated", payload);
     } catch (IllegalArgumentException e) {
       Log.e(TAG, "create microphone error", e);
@@ -222,6 +331,8 @@ public class MicrophoneManager {
         payload.put("bufferSize", pcmBufferDevice.length);
         payload.put("audioSource", "AudioPlaybackCapture");
         payload.put("mode", mode.name());
+        payload.put("recordState", audioRecordDevice.getState());
+        payload.put("sessionId", audioRecordDevice.getAudioSessionId());
         emitDebug(DebugLevel.INFO, DebugCategory.AUDIO, "AudioRecordCreated", payload);
       } else {
         return createMicrophone(sampleRate, isStereo, echoCanceler, noiseSuppressor);
@@ -255,6 +366,8 @@ public class MicrophoneManager {
       payload.put("bufferSize", pcmBuffer.length);
       payload.put("audioSource", audioSource);
       payload.put("mode", mode.name());
+      payload.put("recordState", audioRecord.getState());
+      payload.put("sessionId", audioRecord.getAudioSessionId());
       emitDebug(DebugLevel.INFO, DebugCategory.AUDIO, "AudioRecordCreated", payload);
     }
     return internalResult;
@@ -270,7 +383,9 @@ public class MicrophoneManager {
    */
   public synchronized void start() {
     init();
-    emitDebug(DebugLevel.INFO, DebugCategory.AUDIO, "AudioRecordStarted");
+    Map<String, Object> payload = new HashMap<>();
+    putAudioRuntimeState(payload);
+    emitDebug(DebugLevel.INFO, DebugCategory.AUDIO, "AudioRecordStarted", payload);
     handlerThread = new HandlerThread(TAG);
     handlerThread.start();
     Handler handler = new Handler(handlerThread.getLooper());
@@ -350,6 +465,7 @@ public class MicrophoneManager {
             return null;
           }
           lastMicReadSize = size;
+          lastMicReadResult = size;
           audioUtils.applyVolume(pcmBuffer, microphoneVolume);
           maybeEmitAudioReadStats();
           return new Frame(muted ? pcmBufferMuted : customAudioEffect.process(pcmBuffer), 0, size, timeStamp);
@@ -365,6 +481,7 @@ public class MicrophoneManager {
             return null;
           }
           lastInternalReadSize = size;
+          lastInternalReadResult = size;
           audioUtils.applyVolume(pcmBufferDevice, internalVolume);
           maybeEmitAudioReadStats();
           return new Frame(muted ? pcmBufferMuted : customAudioEffect.process(pcmBufferDevice), 0, size, timeStamp);
@@ -381,6 +498,7 @@ public class MicrophoneManager {
             return null;
           }
           lastMicReadSize = size;
+          lastMicReadResult = size;
           int sizeInternal = audioRecordDevice.read(pcmBufferDevice, 0, pcmBufferDevice.length);
           if (sizeInternal < 0) {
             Map<String, Object> payload = new HashMap<>();
@@ -392,6 +510,7 @@ public class MicrophoneManager {
             return null;
           }
           lastInternalReadSize = sizeInternal;
+          lastInternalReadResult = sizeInternal;
           audioUtils.applyVolumeAndMix(pcmBuffer, microphoneVolume, pcmBufferDevice, internalVolume, pcmBufferMix);
           maybeEmitAudioReadStats();
           return new Frame(muted ? pcmBufferMuted : customAudioEffect.process(pcmBufferMix), 0, size, timeStamp);
@@ -415,6 +534,7 @@ public class MicrophoneManager {
     if (mode == Mode.MICROPHONE || mode == Mode.MIX) {
       float micRms = audioUtils.calculateAmplitude(pcmBuffer);
       payload.put("micReadSize", lastMicReadSize);
+      payload.put("micReadResult", lastMicReadResult);
       payload.put("micRms", micRms);
       payload.put("micSilent", micRms < 1f);
       payload.put("micRecordingState", audioRecord != null ? audioRecord.getRecordingState() : -1);
@@ -424,6 +544,7 @@ public class MicrophoneManager {
     if (mode == Mode.INTERNAL || mode == Mode.MIX) {
       float internalRms = audioUtils.calculateAmplitude(pcmBufferDevice);
       payload.put("internalReadSize", lastInternalReadSize);
+      payload.put("internalReadResult", lastInternalReadResult);
       payload.put("internalRms", internalRms);
       payload.put("internalSilent", internalRms < 1f);
       payload.put("internalRecordingState", audioRecordDevice != null ? audioRecordDevice.getRecordingState() : -1);
@@ -434,6 +555,7 @@ public class MicrophoneManager {
       float mixRms = audioUtils.calculateAmplitude(pcmBufferMix);
       payload.put("mixRms", mixRms);
     }
+    putAudioRuntimeState(payload);
 
     emitDebug(DebugLevel.INFO, DebugCategory.AUDIO, "AudioRead", payload);
   }

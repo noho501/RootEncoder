@@ -99,6 +99,7 @@ class InternalAudioSource(
         }
         val bufferSize = AudioEncoder.inputSize * 5
         emitDebug(DebugLevel.INFO, "InternalAudioCreated", mapOf(
+          "mediaProjectionAvailable" to true,
           "audioPlaybackCaptureEnabled" to true,
           "sampleRate" to sampleRate,
           "channels" to (if (isStereo) 2 else 1),
