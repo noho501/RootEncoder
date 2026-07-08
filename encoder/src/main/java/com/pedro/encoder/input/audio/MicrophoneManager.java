@@ -53,6 +53,7 @@ import java.util.Map;
 public class MicrophoneManager {
 
   private final String TAG = "MicrophoneManager";
+  private static final long MICROPHONE_START_DELAY_MS = 300L;
   protected AudioRecord audioRecord;
   protected AudioRecord audioRecordDevice;
   private final GetMicrophoneData getMicrophoneData;
@@ -83,6 +84,8 @@ public class MicrophoneManager {
   private int lastInternalReadSize = 0;
   private int lastMicReadResult = 0;
   private int lastInternalReadResult = 0;
+  private boolean internalFirstReadEmitted = false;
+  private boolean microphoneFirstReadEmitted = false;
 
   enum Mode {
     MICROPHONE, INTERNAL, MIX
@@ -218,6 +221,36 @@ public class MicrophoneManager {
     payload.put("bluetooth", bluetooth);
     payload.put("mediaProjectionAvailable", audioRecordDevice != null);
     payload.put("audioPlaybackCaptureEnabled", mode == Mode.INTERNAL || mode == Mode.MIX);
+  }
+
+  private void emitStartRecordingEvent(boolean internal) {
+    Map<String, Object> payload = new HashMap<>();
+    payload.put("timestamp", TimeUtils.getCurrentTimeMillis());
+    emitDebug(
+        DebugLevel.INFO,
+        DebugCategory.AUDIO,
+        internal ? "InternalAudioStartRecording" : "MicrophoneStartRecording",
+        payload
+    );
+  }
+
+  private void maybeEmitFirstReadEvent(boolean internal, int readResult) {
+    if (internal) {
+      if (internalFirstReadEmitted) return;
+      internalFirstReadEmitted = true;
+    } else {
+      if (microphoneFirstReadEmitted) return;
+      microphoneFirstReadEmitted = true;
+    }
+    Map<String, Object> payload = new HashMap<>();
+    payload.put("timestamp", TimeUtils.getCurrentTimeMillis());
+    payload.put("readResult", readResult);
+    emitDebug(
+        DebugLevel.INFO,
+        DebugCategory.AUDIO,
+        internal ? "InternalAudioFirstRead" : "MicrophoneFirstRead",
+        payload
+    );
   }
 
   public void setCustomAudioEffect(CustomAudioEffect customAudioEffect) {
@@ -382,7 +415,15 @@ public class MicrophoneManager {
    * Start record and get data
    */
   public synchronized void start() {
+    internalFirstReadEmitted = false;
+    microphoneFirstReadEmitted = false;
     init();
+    if (mode == Mode.MIX) {
+      Map<String, Object> compatibilityPayload = new HashMap<>();
+      compatibilityPayload.put("startOrder", "INTERNAL_MICROPHONE");
+      compatibilityPayload.put("microphoneStartDelay", MICROPHONE_START_DELAY_MS);
+      emitDebug(DebugLevel.INFO, DebugCategory.AUDIO, "AudioCompatibility", compatibilityPayload);
+    }
     Map<String, Object> payload = new HashMap<>();
     putAudioRuntimeState(payload);
     emitDebug(DebugLevel.INFO, DebugCategory.AUDIO, "AudioRecordStarted", payload);
@@ -404,6 +445,7 @@ public class MicrophoneManager {
         case MICROPHONE -> {
           if (audioRecord != null) {
             audioRecord.startRecording();
+            emitStartRecordingEvent(false);
           } else {
             throw new IllegalStateException("Error starting, microphone was stopped or not created, use createMicrophone() before start()");
           }
@@ -411,14 +453,22 @@ public class MicrophoneManager {
         case INTERNAL -> {
           if (audioRecordDevice != null) {
             audioRecordDevice.startRecording();
+            emitStartRecordingEvent(true);
           } else {
             throw new IllegalStateException("Error starting, microphone was stopped or not created, use createMicrophone() before start()");
           }
         }
         case MIX -> {
           if (audioRecord != null && audioRecordDevice != null) {
-            audioRecord.startRecording();
             audioRecordDevice.startRecording();
+            emitStartRecordingEvent(true);
+            try {
+              Thread.sleep(MICROPHONE_START_DELAY_MS);
+            } catch (InterruptedException ignored) {
+              Thread.currentThread().interrupt();
+            }
+            audioRecord.startRecording();
+            emitStartRecordingEvent(false);
           } else {
             throw new IllegalStateException("Error starting, microphone was stopped or not created, use createMicrophone() before start()");
           }
@@ -456,6 +506,7 @@ public class MicrophoneManager {
     switch (mode) {
         case MICROPHONE -> {
           int size = audioRecord.read(pcmBuffer, 0, pcmBuffer.length);
+          maybeEmitFirstReadEvent(false, size);
           if (size < 0) {
             Map<String, Object> payload = new HashMap<>();
             payload.put("readResult", size);
@@ -472,6 +523,7 @@ public class MicrophoneManager {
         }
         case INTERNAL -> {
           int size = audioRecordDevice.read(pcmBufferDevice, 0, pcmBufferDevice.length);
+          maybeEmitFirstReadEvent(true, size);
           if (size < 0) {
             Map<String, Object> payload = new HashMap<>();
             payload.put("readResult", size);
@@ -488,6 +540,7 @@ public class MicrophoneManager {
         }
         case MIX -> {
           int size = audioRecord.read(pcmBuffer, 0, pcmBuffer.length);
+          maybeEmitFirstReadEvent(false, size);
           if (size < 0) {
             Map<String, Object> payload = new HashMap<>();
             payload.put("readResult", size);
@@ -500,6 +553,7 @@ public class MicrophoneManager {
           lastMicReadSize = size;
           lastMicReadResult = size;
           int sizeInternal = audioRecordDevice.read(pcmBufferDevice, 0, pcmBufferDevice.length);
+          maybeEmitFirstReadEvent(true, sizeInternal);
           if (sizeInternal < 0) {
             Map<String, Object> payload = new HashMap<>();
             payload.put("readResult", sizeInternal);
@@ -566,6 +620,8 @@ public class MicrophoneManager {
   public synchronized void stop() {
     running = false;
     created = false;
+    internalFirstReadEmitted = false;
+    microphoneFirstReadEmitted = false;
     emitDebug(DebugLevel.INFO, DebugCategory.AUDIO, "AudioRecordStopped");
     if (handlerThread != null) {
       if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.JELLY_BEAN_MR2) {
