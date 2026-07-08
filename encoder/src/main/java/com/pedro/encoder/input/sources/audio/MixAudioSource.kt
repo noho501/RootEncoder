@@ -128,9 +128,9 @@ class MixAudioSource(
     override fun stop() {
         if (isRunning()) {
             getMicrophoneData = null
-            emitDebug(DebugLevel.INFO, "MixSourceReleased")
             microphone.stop()
             handlerThread.quitSafely()
+            emitDebug(DebugLevel.INFO, "MixSourceReleased")
         }
     }
 

@@ -29,7 +29,6 @@ import com.pedro.common.debug.DebugEvent
 import com.pedro.common.debug.DebugLevel
 import com.pedro.common.debug.DebugListener
 import com.pedro.encoder.Frame
-import com.pedro.encoder.audio.AudioEncoder
 import com.pedro.encoder.input.audio.CustomAudioEffect
 import com.pedro.encoder.input.audio.GetMicrophoneData
 import com.pedro.encoder.input.audio.MicrophoneManager
@@ -123,17 +122,17 @@ class InternalAudioSource(
   override fun stop() {
     if (isRunning()) {
       this.getMicrophoneData = null
-      emitDebug(DebugLevel.INFO, "InternalAudioStopped")
       microphone.stop()
       handlerThread.quitSafely()
+      emitDebug(DebugLevel.INFO, "InternalAudioStopped")
     }
   }
 
   override fun isRunning(): Boolean = microphone.isRunning
 
   override fun release() {
-    emitDebug(DebugLevel.INFO, "InternalAudioReleased")
     MediaProjectionHandler.mediaProjection?.unregisterCallback(mediaProjectionCallback)
+    emitDebug(DebugLevel.INFO, "InternalAudioReleased")
   }
 
   override fun inputPCMData(frame: Frame) {
