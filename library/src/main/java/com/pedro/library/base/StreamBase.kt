@@ -435,6 +435,7 @@ abstract class StreamBase(
     audioSource.release()
     if (wasRunning) source.start(getMicrophoneData)
     audioSource = source
+    source.debugListener = debugListener
   }
 
   /**
@@ -484,6 +485,7 @@ abstract class StreamBase(
    */
   fun setDebugListener(listener: DebugListener) {
     debugListener = listener
+    audioSource.debugListener = listener
   }
 
   /**
@@ -492,6 +494,7 @@ abstract class StreamBase(
    */
   fun removeDebugListener() {
     debugListener = null
+    audioSource.debugListener = null
   }
 
   /**

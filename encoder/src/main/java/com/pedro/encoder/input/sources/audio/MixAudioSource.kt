@@ -27,6 +27,11 @@ import android.os.Build
 import android.os.Handler
 import android.os.HandlerThread
 import androidx.annotation.RequiresApi
+import com.pedro.common.TimeUtils
+import com.pedro.common.debug.DebugCategory
+import com.pedro.common.debug.DebugEvent
+import com.pedro.common.debug.DebugLevel
+import com.pedro.common.debug.DebugListener
 import com.pedro.encoder.Frame
 import com.pedro.encoder.input.audio.CustomAudioEffect
 import com.pedro.encoder.input.audio.GetMicrophoneData
@@ -62,8 +67,20 @@ class MixAudioSource(
     private var preferredDevice: AudioDeviceInfo? = null
     private val mediaProjectionCallback = mediaProjectionCallback ?: object : MediaProjection.Callback() {}
 
+    // Propagate the debug listener to the underlying MicrophoneManager
+    override var debugListener: DebugListener?
+        get() = super.debugListener
+        set(value) {
+            super.debugListener = value
+            microphone.debugListener = value
+        }
+
     init {
         MediaProjectionHandler.mediaProjection = mediaProjection
+    }
+
+    private fun emitDebug(level: DebugLevel, event: String, payload: Map<String, Any> = emptyMap()) {
+        debugListener?.onDebugEvent(DebugEvent(TimeUtils.getCurrentTimeMillis(), level, DebugCategory.AUDIO, event, payload))
     }
 
     override fun create(sampleRate: Int, isStereo: Boolean, echoCanceler: Boolean, noiseSuppressor: Boolean): Boolean {
@@ -92,11 +109,18 @@ class MixAudioSource(
                 .addMatchingUsage(AudioAttributes.USAGE_UNKNOWN).build()
             val result = microphone.createMixMicrophone(microphoneAudioSource, config, sampleRate, isStereo, echoCanceler, noiseSuppressor)
             if (!result) {
+                emitDebug(DebugLevel.ERROR, "MixSourceStartFailed", mapOf("reason" to "Failed to create microphone audio source"))
                 throw IllegalArgumentException("Failed to create microphone audio source")
             }
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
                 microphone.setPreferredDevice(preferredDevice)
             }
+            emitDebug(DebugLevel.INFO, "MixSourceCreated", mapOf(
+                "sampleRate" to sampleRate,
+                "channels" to (if (isStereo) 2 else 1),
+                "audioSource" to microphoneAudioSource,
+                "mode" to "MIX"
+            ))
             microphone.start()
         }
     }
@@ -104,6 +128,7 @@ class MixAudioSource(
     override fun stop() {
         if (isRunning()) {
             getMicrophoneData = null
+            emitDebug(DebugLevel.INFO, "MixSourceReleased")
             microphone.stop()
             handlerThread.quitSafely()
         }

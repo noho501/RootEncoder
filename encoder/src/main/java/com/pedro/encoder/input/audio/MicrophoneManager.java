@@ -28,11 +28,19 @@ import android.os.Handler;
 import android.os.HandlerThread;
 import android.util.Log;
 
+import androidx.annotation.Nullable;
 import androidx.annotation.RequiresApi;
 
 import com.pedro.common.TimeUtils;
+import com.pedro.common.debug.DebugCategory;
+import com.pedro.common.debug.DebugEvent;
+import com.pedro.common.debug.DebugLevel;
+import com.pedro.common.debug.DebugListener;
 import com.pedro.encoder.Frame;
 import com.pedro.encoder.audio.AudioEncoder;
+
+import java.util.HashMap;
+import java.util.Map;
 
 /**
  * Created by pedro on 19/01/17.
@@ -63,6 +71,13 @@ public class MicrophoneManager {
   private float microphoneVolume = 1f;
   private float internalVolume = 1f;
   private final AudioUtils audioUtils = new AudioUtils();
+  // Debug listener — volatile so it can be swapped safely from any thread
+  @Nullable
+  public volatile DebugListener debugListener = null;
+  // State for throttled AudioRead events (at most once per second)
+  private long lastAudioReadTs = 0L;
+  private int lastMicReadSize = 0;
+  private int lastInternalReadSize = 0;
 
   enum Mode {
     MICROPHONE, INTERNAL, MIX
@@ -70,6 +85,32 @@ public class MicrophoneManager {
 
   public MicrophoneManager(GetMicrophoneData getMicrophoneData) {
     this.getMicrophoneData = getMicrophoneData;
+  }
+
+  // --- Debug helpers ---
+
+  private void emitDebug(DebugLevel level, DebugCategory category, String event, Map<String, Object> payload) {
+    DebugListener listener = debugListener;
+    if (listener == null) return;
+    listener.onDebugEvent(new DebugEvent(TimeUtils.getCurrentTimeMillis(), level, category, event, payload));
+  }
+
+  private void emitDebug(DebugLevel level, DebugCategory category, String event) {
+    DebugListener listener = debugListener;
+    if (listener == null) return;
+    Map<String, Object> payload = new HashMap<>();
+    listener.onDebugEvent(new DebugEvent(TimeUtils.getCurrentTimeMillis(), level, category, event, payload));
+  }
+
+  /** Returns a human-readable name for an AudioRecord error code. */
+  private static String audioRecordErrorName(int error) {
+    if (error == AudioRecord.ERROR) return "ERROR";
+    if (error == AudioRecord.ERROR_BAD_VALUE) return "ERROR_BAD_VALUE";
+    if (error == AudioRecord.ERROR_INVALID_OPERATION) return "ERROR_INVALID_OPERATION";
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N && error == AudioRecord.ERROR_DEAD_OBJECT) {
+      return "ERROR_DEAD_OBJECT";
+    }
+    return "UNKNOWN(" + error + ")";
   }
 
   public void setCustomAudioEffect(CustomAudioEffect customAudioEffect) {
@@ -116,8 +157,23 @@ public class MicrophoneManager {
       Log.i(TAG, "Microphone created, " + sampleRate + "hz, " + chl);
       mode = Mode.MICROPHONE;
       created = true;
+      Map<String, Object> payload = new HashMap<>();
+      payload.put("sampleRate", sampleRate);
+      payload.put("channelCount", isStereo ? 2 : 1);
+      payload.put("stereo", isStereo);
+      payload.put("bufferSize", pcmBuffer.length);
+      payload.put("audioSource", audioSource);
+      payload.put("mode", mode.name());
+      emitDebug(DebugLevel.INFO, DebugCategory.AUDIO, "AudioRecordCreated", payload);
     } catch (IllegalArgumentException e) {
       Log.e(TAG, "create microphone error", e);
+      Map<String, Object> payload = new HashMap<>();
+      payload.put("sampleRate", sampleRate);
+      payload.put("channelCount", isStereo ? 2 : 1);
+      payload.put("stereo", isStereo);
+      payload.put("audioSource", audioSource);
+      payload.put("error", e.getMessage());
+      emitDebug(DebugLevel.ERROR, DebugCategory.AUDIO, "AudioRecordInitFailed", payload);
     }
     return created;
   }
@@ -159,11 +215,26 @@ public class MicrophoneManager {
         Log.i(TAG, "Internal microphone created, " + sampleRate + "hz, " + chl);
         mode = Mode.INTERNAL;
         created = true;
+        Map<String, Object> payload = new HashMap<>();
+        payload.put("sampleRate", sampleRate);
+        payload.put("channelCount", isStereo ? 2 : 1);
+        payload.put("stereo", isStereo);
+        payload.put("bufferSize", pcmBufferDevice.length);
+        payload.put("audioSource", "AudioPlaybackCapture");
+        payload.put("mode", mode.name());
+        emitDebug(DebugLevel.INFO, DebugCategory.AUDIO, "AudioRecordCreated", payload);
       } else {
         return createMicrophone(sampleRate, isStereo, echoCanceler, noiseSuppressor);
       }
     } catch (IllegalArgumentException e) {
       Log.e(TAG, "create microphone error", e);
+      Map<String, Object> payload = new HashMap<>();
+      payload.put("sampleRate", sampleRate);
+      payload.put("channelCount", isStereo ? 2 : 1);
+      payload.put("stereo", isStereo);
+      payload.put("audioSource", "AudioPlaybackCapture");
+      payload.put("error", e.getMessage());
+      emitDebug(DebugLevel.ERROR, DebugCategory.AUDIO, "AudioRecordInitFailed", payload);
     }
     return created;
   }
@@ -176,6 +247,16 @@ public class MicrophoneManager {
     if (!micResult) return false;
     boolean internalResult = createInternalMicrophone(config, sampleRate, isStereo, echoCanceler, noiseSuppressor);
     mode = Mode.MIX;
+    if (internalResult) {
+      Map<String, Object> payload = new HashMap<>();
+      payload.put("sampleRate", sampleRate);
+      payload.put("channelCount", isStereo ? 2 : 1);
+      payload.put("stereo", isStereo);
+      payload.put("bufferSize", pcmBuffer.length);
+      payload.put("audioSource", audioSource);
+      payload.put("mode", mode.name());
+      emitDebug(DebugLevel.INFO, DebugCategory.AUDIO, "AudioRecordCreated", payload);
+    }
     return internalResult;
   }
 
@@ -189,6 +270,7 @@ public class MicrophoneManager {
    */
   public synchronized void start() {
     init();
+    emitDebug(DebugLevel.INFO, DebugCategory.AUDIO, "AudioRecordStarted");
     handlerThread = new HandlerThread(TAG);
     handlerThread.start();
     Handler handler = new Handler(handlerThread.getLooper());
@@ -260,37 +342,100 @@ public class MicrophoneManager {
         case MICROPHONE -> {
           int size = audioRecord.read(pcmBuffer, 0, pcmBuffer.length);
           if (size < 0) {
-            Log.e(TAG, "read error: " + size);
+            Map<String, Object> payload = new HashMap<>();
+            payload.put("readResult", size);
+            payload.put("errorName", audioRecordErrorName(size));
+            payload.put("recordingState", audioRecord.getRecordingState());
+            emitDebug(DebugLevel.ERROR, DebugCategory.AUDIO, "AudioReadError", payload);
             return null;
           }
+          lastMicReadSize = size;
           audioUtils.applyVolume(pcmBuffer, microphoneVolume);
+          maybeEmitAudioReadStats();
           return new Frame(muted ? pcmBufferMuted : customAudioEffect.process(pcmBuffer), 0, size, timeStamp);
         }
         case INTERNAL -> {
           int size = audioRecordDevice.read(pcmBufferDevice, 0, pcmBufferDevice.length);
           if (size < 0) {
-            Log.e(TAG, "read error: " + size);
+            Map<String, Object> payload = new HashMap<>();
+            payload.put("readResult", size);
+            payload.put("errorName", audioRecordErrorName(size));
+            payload.put("recordingState", audioRecordDevice.getRecordingState());
+            emitDebug(DebugLevel.ERROR, DebugCategory.AUDIO, "AudioReadError", payload);
             return null;
           }
+          lastInternalReadSize = size;
           audioUtils.applyVolume(pcmBufferDevice, internalVolume);
+          maybeEmitAudioReadStats();
           return new Frame(muted ? pcmBufferMuted : customAudioEffect.process(pcmBufferDevice), 0, size, timeStamp);
         }
         case MIX -> {
           int size = audioRecord.read(pcmBuffer, 0, pcmBuffer.length);
           if (size < 0) {
-            Log.e(TAG, "read error: " + size);
+            Map<String, Object> payload = new HashMap<>();
+            payload.put("readResult", size);
+            payload.put("errorName", audioRecordErrorName(size));
+            payload.put("source", "mic");
+            payload.put("recordingState", audioRecord.getRecordingState());
+            emitDebug(DebugLevel.ERROR, DebugCategory.AUDIO, "AudioReadError", payload);
             return null;
           }
+          lastMicReadSize = size;
           int sizeInternal = audioRecordDevice.read(pcmBufferDevice, 0, pcmBufferDevice.length);
           if (sizeInternal < 0) {
-            Log.e(TAG, "read error: " + sizeInternal);
+            Map<String, Object> payload = new HashMap<>();
+            payload.put("readResult", sizeInternal);
+            payload.put("errorName", audioRecordErrorName(sizeInternal));
+            payload.put("source", "internal");
+            payload.put("recordingState", audioRecordDevice.getRecordingState());
+            emitDebug(DebugLevel.ERROR, DebugCategory.AUDIO, "AudioReadError", payload);
             return null;
           }
+          lastInternalReadSize = sizeInternal;
           audioUtils.applyVolumeAndMix(pcmBuffer, microphoneVolume, pcmBufferDevice, internalVolume, pcmBufferMix);
+          maybeEmitAudioReadStats();
           return new Frame(muted ? pcmBufferMuted : customAudioEffect.process(pcmBufferMix), 0, size, timeStamp);
         }
         default -> { return null; }
     }
+  }
+
+  /**
+   * Emit a throttled AudioRead stats event — at most once per second.
+   * Called from the read loop; no-ops when no listener is registered.
+   */
+  private void maybeEmitAudioReadStats() {
+    if (debugListener == null) return;
+    long now = TimeUtils.getCurrentTimeMillis();
+    if (now - lastAudioReadTs < 1000) return;
+    lastAudioReadTs = now;
+
+    Map<String, Object> payload = new HashMap<>();
+
+    if (mode == Mode.MICROPHONE || mode == Mode.MIX) {
+      float micRms = audioUtils.calculateAmplitude(pcmBuffer);
+      payload.put("micReadSize", lastMicReadSize);
+      payload.put("micRms", micRms);
+      payload.put("micSilent", micRms < 1f);
+      payload.put("micRecordingState", audioRecord != null ? audioRecord.getRecordingState() : -1);
+      payload.put("microphoneVolume", microphoneVolume);
+    }
+
+    if (mode == Mode.INTERNAL || mode == Mode.MIX) {
+      float internalRms = audioUtils.calculateAmplitude(pcmBufferDevice);
+      payload.put("internalReadSize", lastInternalReadSize);
+      payload.put("internalRms", internalRms);
+      payload.put("internalSilent", internalRms < 1f);
+      payload.put("internalRecordingState", audioRecordDevice != null ? audioRecordDevice.getRecordingState() : -1);
+      payload.put("internalVolume", internalVolume);
+    }
+
+    if (mode == Mode.MIX) {
+      float mixRms = audioUtils.calculateAmplitude(pcmBufferMix);
+      payload.put("mixRms", mixRms);
+    }
+
+    emitDebug(DebugLevel.INFO, DebugCategory.AUDIO, "AudioRead", payload);
   }
 
   /**
@@ -299,6 +444,7 @@ public class MicrophoneManager {
   public synchronized void stop() {
     running = false;
     created = false;
+    emitDebug(DebugLevel.INFO, DebugCategory.AUDIO, "AudioRecordStopped");
     if (handlerThread != null) {
       if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.JELLY_BEAN_MR2) {
         handlerThread.quitSafely();
@@ -321,6 +467,7 @@ public class MicrophoneManager {
     if (audioPostProcessEffect != null) {
       audioPostProcessEffect.release();
     }
+    emitDebug(DebugLevel.INFO, DebugCategory.AUDIO, "AudioRecordReleased");
     Log.i(TAG, "Microphone stopped");
   }
 

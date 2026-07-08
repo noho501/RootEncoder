@@ -16,6 +16,7 @@
 
 package com.pedro.encoder.input.sources.audio
 
+import com.pedro.common.debug.DebugListener
 import com.pedro.encoder.input.audio.GetMicrophoneData
 
 /**
@@ -25,6 +26,7 @@ abstract class AudioSource {
 
   protected var getMicrophoneData: GetMicrophoneData? = null
   var created = false
+  open var debugListener: DebugListener? = null
   var sampleRate = 0
   var isStereo = true
   var echoCanceler = false

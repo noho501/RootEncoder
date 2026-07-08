@@ -20,6 +20,7 @@ import android.media.AudioDeviceInfo
 import android.media.MediaRecorder
 import android.os.Build
 import androidx.annotation.RequiresApi
+import com.pedro.common.debug.DebugListener
 import com.pedro.encoder.Frame
 import com.pedro.encoder.input.audio.CustomAudioEffect
 import com.pedro.encoder.input.audio.GetMicrophoneData
@@ -34,6 +35,14 @@ class MicrophoneSource(
 
   private val microphone = MicrophoneManager(this)
   private var preferredDevice: AudioDeviceInfo? = null
+
+  // Propagate the debug listener to the underlying MicrophoneManager
+  override var debugListener: DebugListener?
+    get() = super.debugListener
+    set(value) {
+      super.debugListener = value
+      microphone.debugListener = value
+    }
 
   override fun create(sampleRate: Int, isStereo: Boolean, echoCanceler: Boolean, noiseSuppressor: Boolean): Boolean {
     //create microphone to confirm valid parameters
