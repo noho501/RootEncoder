@@ -476,6 +476,10 @@ abstract class StreamBase(
    * The application decides whether to ignore, display, save, or upload the events.
    * When no listener is registered the overhead is effectively zero.
    *
+   * The listener field is `@Volatile`, so swapping it mid-stream on another thread is safe:
+   * any event dispatched concurrently will be delivered to either the old or the new listener,
+   * but never to both and never to a partially-constructed reference.
+   *
    * @param listener the [DebugListener] to notify; replaces any previously registered listener.
    */
   fun setDebugListener(listener: DebugListener) {
