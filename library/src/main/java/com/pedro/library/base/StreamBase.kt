@@ -29,6 +29,7 @@ import androidx.annotation.RequiresApi
 import com.pedro.common.AudioCodec
 import com.pedro.common.TimeUtils
 import com.pedro.common.VideoCodec
+import com.pedro.common.debug.DebugListener
 import com.pedro.common.tryClear
 import com.pedro.encoder.CodecErrorCallback
 import com.pedro.encoder.Frame
@@ -84,6 +85,8 @@ abstract class StreamBase(
   //video/audio record
   private var recordController: RecordController = AndroidMuxerRecordController()
   private val fpsListener = FpsListener()
+  @Volatile
+  private var debugListener: DebugListener? = null
   var isStreaming = false
     private set
   var isOnPreview = false
@@ -463,6 +466,28 @@ abstract class StreamBase(
    */
   fun setFpsListener(callback: FpsListener.Callback?) {
     fpsListener.setCallback(callback)
+  }
+
+  /**
+   * Register a listener to receive structured debug events emitted by the library.
+   * Useful for investigating device-specific issues (e.g. AudioRecord, codec, or ROM issues)
+   * without relying on Logcat.
+   *
+   * The application decides whether to ignore, display, save, or upload the events.
+   * When no listener is registered the overhead is effectively zero.
+   *
+   * @param listener the [DebugListener] to notify; replaces any previously registered listener.
+   */
+  fun setDebugListener(listener: DebugListener) {
+    debugListener = listener
+  }
+
+  /**
+   * Unregister the previously set [DebugListener].
+   * After this call no further debug events will be delivered.
+   */
+  fun removeDebugListener() {
+    debugListener = null
   }
 
   /**
