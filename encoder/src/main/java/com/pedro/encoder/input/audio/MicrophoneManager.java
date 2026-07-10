@@ -383,28 +383,32 @@ public class MicrophoneManager {
     return created;
   }
 
-  public boolean createMixMicrophone(
-          int audioSource, AudioPlaybackCaptureConfiguration config, int sampleRate,
-          boolean isStereo, boolean echoCanceler, boolean noiseSuppressor
-  ) {
-    boolean micResult = createMicrophone(audioSource, sampleRate, isStereo, echoCanceler, noiseSuppressor);
-    if (!micResult) return false;
-    boolean internalResult = createInternalMicrophone(config, sampleRate, isStereo, echoCanceler, noiseSuppressor);
-    mode = Mode.MIX;
-    if (internalResult) {
-      Map<String, Object> payload = new HashMap<>();
-      payload.put("sampleRate", sampleRate);
-      payload.put("channelCount", isStereo ? 2 : 1);
-      payload.put("stereo", isStereo);
-      payload.put("bufferSize", pcmBuffer.length);
-      payload.put("audioSource", audioSource);
-      payload.put("mode", mode.name());
-      payload.put("recordState", audioRecord.getState());
-      payload.put("sessionId", audioRecord.getAudioSessionId());
-      emitDebug(DebugLevel.INFO, DebugCategory.AUDIO, "AudioRecordCreated", payload);
+    public boolean createMixMicrophone(
+            int audioSource, AudioPlaybackCaptureConfiguration config, int sampleRate,
+            boolean isStereo, boolean echoCanceler, boolean noiseSuppressor
+    ) {
+        boolean internalResult = createInternalMicrophone(config, sampleRate, isStereo, echoCanceler, noiseSuppressor);
+        if (!internalResult) return false;
+
+        boolean micResult = createMicrophone(audioSource, sampleRate, isStereo, echoCanceler, noiseSuppressor);
+        if (!micResult) return false;
+
+        mode = Mode.MIX;
+
+        // Phần log debug giữ nguyên
+        Map<String, Object> payload = new HashMap<>();
+        payload.put("sampleRate", sampleRate);
+        payload.put("channelCount", isStereo ? 2 : 1);
+        payload.put("stereo", isStereo);
+        payload.put("bufferSize", pcmBuffer.length);
+        payload.put("audioSource", audioSource);
+        payload.put("mode", mode.name());
+        payload.put("recordState", audioRecord.getState());
+        payload.put("sessionId", audioRecord.getAudioSessionId());
+        emitDebug(DebugLevel.INFO, DebugCategory.AUDIO, "AudioRecordCreated", payload);
+
+        return true;
     }
-    return internalResult;
-  }
 
   public boolean createInternalMicrophone(AudioPlaybackCaptureConfiguration config, int sampleRate,
       boolean isStereo) {
@@ -459,19 +463,21 @@ public class MicrophoneManager {
           }
         }
         case MIX -> {
-          if (audioRecord != null && audioRecordDevice != null) {
-            audioRecordDevice.startRecording();
-            emitStartRecordingEvent(true);
-            try {
-              Thread.sleep(MICROPHONE_START_DELAY_MS);
-            } catch (InterruptedException ignored) {
-              Thread.currentThread().interrupt();
+            if (audioRecord != null && audioRecordDevice != null) {
+                audioRecordDevice.startRecording();
+                emitStartRecordingEvent(true);
+
+                try {
+                    Thread.sleep(MICROPHONE_START_DELAY_MS);
+                } catch (InterruptedException ignored) {
+                    Thread.currentThread().interrupt();
+                }
+
+                audioRecord.startRecording();
+                emitStartRecordingEvent(false);
+            } else {
+                throw new IllegalStateException("Error starting, microphone was stopped or not created, use createMicrophone() before start()");
             }
-            audioRecord.startRecording();
-            emitStartRecordingEvent(false);
-          } else {
-            throw new IllegalStateException("Error starting, microphone was stopped or not created, use createMicrophone() before start()");
-          }
         }
     }
     running = true;
