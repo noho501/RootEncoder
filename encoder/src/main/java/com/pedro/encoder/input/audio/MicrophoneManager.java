@@ -281,43 +281,57 @@ public class MicrophoneManager {
    * recording source definitions.
    */
   public boolean createMicrophone(int audioSource, int sampleRate, boolean isStereo,
-      boolean echoCanceler, boolean noiseSuppressor) {
-    try {
-      this.sampleRate = sampleRate;
-      channel = isStereo ? AudioFormat.CHANNEL_IN_STEREO : AudioFormat.CHANNEL_IN_MONO;
-      getPcmBufferSize(sampleRate, channel);
-      audioRecord = new AudioRecord(audioSource, sampleRate, channel, audioFormat, AudioEncoder.inputSize * 5);
-      audioPostProcessEffect = new AudioPostProcessEffect(audioRecord.getAudioSessionId());
-      if (echoCanceler) audioPostProcessEffect.enableEchoCanceler();
-      if (noiseSuppressor) audioPostProcessEffect.enableNoiseSuppressor();
-      String chl = (isStereo) ? "Stereo" : "Mono";
-      if (audioRecord.getState() != AudioRecord.STATE_INITIALIZED) {
-        throw new IllegalArgumentException("Some parameters specified are not valid");
+                                  boolean echoCanceler, boolean noiseSuppressor) {
+      try {
+          this.sampleRate = sampleRate;
+          channel = isStereo ? AudioFormat.CHANNEL_IN_STEREO : AudioFormat.CHANNEL_IN_MONO;
+          getPcmBufferSize(sampleRate, channel);
+
+          if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+              audioRecord = new AudioRecord.Builder()
+                      .setAudioFormat(new AudioFormat.Builder().setEncoding(audioFormat)
+                              .setSampleRate(sampleRate)
+                              .setChannelMask(channel)
+                              .build())
+                      .setAudioSource(audioSource)
+                      .setBufferSizeInBytes(AudioEncoder.inputSize * 5)
+                      .build();
+          } else {
+              audioRecord = new AudioRecord(audioSource, sampleRate, channel, audioFormat, AudioEncoder.inputSize * 5);
+          }
+
+          audioPostProcessEffect = new AudioPostProcessEffect(audioRecord.getAudioSessionId());
+          if (echoCanceler) audioPostProcessEffect.enableEchoCanceler();
+          if (noiseSuppressor) audioPostProcessEffect.enableNoiseSuppressor();
+          String chl = (isStereo) ? "Stereo" : "Mono";
+          if (audioRecord.getState() != AudioRecord.STATE_INITIALIZED) {
+              throw new IllegalArgumentException("Some parameters specified are not valid");
+          }
+          Log.i(TAG, "Microphone created, " + sampleRate + "hz, " + chl);
+          mode = Mode.MICROPHONE;
+          created = true;
+          Map<String, Object> payload = new HashMap<>();
+          payload.put("sampleRate", sampleRate);
+          payload.put("channelCount", isStereo ? 2 : 1);
+          payload.put("stereo", isStereo);
+          payload.put("bufferSize", pcmBuffer.length);
+          payload.put("audioSource", audioSource);
+          payload.put("mode", mode.name());
+          payload.put("recordState", audioRecord.getState());
+          payload.put("sessionId", audioRecord.getAudioSessionId());
+          emitDebug(DebugLevel.INFO, DebugCategory.AUDIO, "AudioRecordCreated", payload);
+
+      } catch (Exception e) {
+          Log.e(TAG, "create microphone error", e);
+          Map<String, Object> payload = new HashMap<>();
+          payload.put("sampleRate", sampleRate);
+          payload.put("channelCount", isStereo ? 2 : 1);
+          payload.put("stereo", isStereo);
+          payload.put("audioSource", audioSource);
+          payload.put("error", e.getMessage());
+          emitDebug(DebugLevel.ERROR, DebugCategory.AUDIO, "AudioRecordInitFailed", payload);
       }
-      Log.i(TAG, "Microphone created, " + sampleRate + "hz, " + chl);
-      mode = Mode.MICROPHONE;
-      created = true;
-      Map<String, Object> payload = new HashMap<>();
-      payload.put("sampleRate", sampleRate);
-      payload.put("channelCount", isStereo ? 2 : 1);
-      payload.put("stereo", isStereo);
-      payload.put("bufferSize", pcmBuffer.length);
-      payload.put("audioSource", audioSource);
-      payload.put("mode", mode.name());
-      payload.put("recordState", audioRecord.getState());
-      payload.put("sessionId", audioRecord.getAudioSessionId());
-      emitDebug(DebugLevel.INFO, DebugCategory.AUDIO, "AudioRecordCreated", payload);
-    } catch (IllegalArgumentException e) {
-      Log.e(TAG, "create microphone error", e);
-      Map<String, Object> payload = new HashMap<>();
-      payload.put("sampleRate", sampleRate);
-      payload.put("channelCount", isStereo ? 2 : 1);
-      payload.put("stereo", isStereo);
-      payload.put("audioSource", audioSource);
-      payload.put("error", e.getMessage());
-      emitDebug(DebugLevel.ERROR, DebugCategory.AUDIO, "AudioRecordInitFailed", payload);
-    }
-    return created;
+      return created;
   }
 
   /**
@@ -333,54 +347,55 @@ public class MicrophoneManager {
    * @see "https://medium.com/@debuggingisfun/android-10-audio-capture-77dd8e9070f9"
    */
   public boolean createInternalMicrophone(AudioPlaybackCaptureConfiguration config, int sampleRate,
-      boolean isStereo, boolean echoCanceler, boolean noiseSuppressor) {
-    try {
-      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-        this.sampleRate = sampleRate;
-        channel = isStereo ? AudioFormat.CHANNEL_IN_STEREO : AudioFormat.CHANNEL_IN_MONO;
-        getPcmBufferSize(sampleRate, channel);
-        audioRecordDevice = new AudioRecord.Builder()
-                .setAudioPlaybackCaptureConfig(config)
-                .setAudioFormat(new AudioFormat.Builder().setEncoding(audioFormat)
-                  .setSampleRate(sampleRate)
-                  .setChannelMask(channel)
-                  .build())
-                .setBufferSizeInBytes(AudioEncoder.inputSize * 5)
-                .build();
-        audioPostProcessEffect = new AudioPostProcessEffect(audioRecordDevice.getAudioSessionId());
-        if (echoCanceler) audioPostProcessEffect.enableEchoCanceler();
-        if (noiseSuppressor) audioPostProcessEffect.enableNoiseSuppressor();
-        String chl = (isStereo) ? "Stereo" : "Mono";
-        if (audioRecordDevice.getState() != AudioRecord.STATE_INITIALIZED) {
-          throw new IllegalArgumentException("Some parameters specified are not valid");
-        }
-        Log.i(TAG, "Internal microphone created, " + sampleRate + "hz, " + chl);
-        mode = Mode.INTERNAL;
-        created = true;
-        Map<String, Object> payload = new HashMap<>();
-        payload.put("sampleRate", sampleRate);
-        payload.put("channelCount", isStereo ? 2 : 1);
-        payload.put("stereo", isStereo);
-        payload.put("bufferSize", pcmBufferDevice.length);
-        payload.put("audioSource", "AudioPlaybackCapture");
-        payload.put("mode", mode.name());
-        payload.put("recordState", audioRecordDevice.getState());
-        payload.put("sessionId", audioRecordDevice.getAudioSessionId());
-        emitDebug(DebugLevel.INFO, DebugCategory.AUDIO, "AudioRecordCreated", payload);
-      } else {
-        return createMicrophone(sampleRate, isStereo, echoCanceler, noiseSuppressor);
+                                          boolean isStereo, boolean echoCanceler, boolean noiseSuppressor) {
+      try {
+          if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+              throw new IllegalStateException("Internal microphone unsupported in this Android version");
+          }
+
+          this.sampleRate = sampleRate;
+          channel = isStereo ? AudioFormat.CHANNEL_IN_STEREO : AudioFormat.CHANNEL_IN_MONO;
+          getPcmBufferSize(sampleRate, channel);
+          audioRecordDevice = new AudioRecord.Builder()
+                  .setAudioPlaybackCaptureConfig(config)
+                  .setAudioFormat(new AudioFormat.Builder().setEncoding(audioFormat)
+                          .setSampleRate(sampleRate)
+                          .setChannelMask(channel)
+                          .build())
+                  .setBufferSizeInBytes(AudioEncoder.inputSize * 5)
+                  .build();
+          audioPostProcessEffect = new AudioPostProcessEffect(audioRecordDevice.getAudioSessionId());
+          if (echoCanceler) audioPostProcessEffect.enableEchoCanceler();
+          if (noiseSuppressor) audioPostProcessEffect.enableNoiseSuppressor();
+          String chl = (isStereo) ? "Stereo" : "Mono";
+          if (audioRecordDevice.getState() != AudioRecord.STATE_INITIALIZED) {
+              throw new IllegalArgumentException("Some parameters specified are not valid");
+          }
+          Log.i(TAG, "Internal microphone created, " + sampleRate + "hz, " + chl);
+          mode = Mode.INTERNAL;
+          created = true;
+          Map<String, Object> payload = new HashMap<>();
+          payload.put("sampleRate", sampleRate);
+          payload.put("channelCount", isStereo ? 2 : 1);
+          payload.put("stereo", isStereo);
+          payload.put("bufferSize", pcmBufferDevice.length);
+          payload.put("audioSource", "AudioPlaybackCapture");
+          payload.put("mode", mode.name());
+          payload.put("recordState", audioRecordDevice.getState());
+          payload.put("sessionId", audioRecordDevice.getAudioSessionId());
+          emitDebug(DebugLevel.INFO, DebugCategory.AUDIO, "AudioRecordCreated", payload);
+
+      } catch (Exception e) {
+          Log.e(TAG, "create microphone error", e);
+          Map<String, Object> payload = new HashMap<>();
+          payload.put("sampleRate", sampleRate);
+          payload.put("channelCount", isStereo ? 2 : 1);
+          payload.put("stereo", isStereo);
+          payload.put("audioSource", "AudioPlaybackCapture");
+          payload.put("error", e.getMessage());
+          emitDebug(DebugLevel.ERROR, DebugCategory.AUDIO, "AudioRecordInitFailed", payload);
       }
-    } catch (IllegalArgumentException e) {
-      Log.e(TAG, "create microphone error", e);
-      Map<String, Object> payload = new HashMap<>();
-      payload.put("sampleRate", sampleRate);
-      payload.put("channelCount", isStereo ? 2 : 1);
-      payload.put("stereo", isStereo);
-      payload.put("audioSource", "AudioPlaybackCapture");
-      payload.put("error", e.getMessage());
-      emitDebug(DebugLevel.ERROR, DebugCategory.AUDIO, "AudioRecordInitFailed", payload);
-    }
-    return created;
+      return created;
   }
 
     public boolean createMixMicrophone(
