@@ -29,6 +29,7 @@ import androidx.annotation.RequiresApi
 import com.pedro.common.AudioCodec
 import com.pedro.common.TimeUtils
 import com.pedro.common.VideoCodec
+import com.pedro.common.debug.DebugListener
 import com.pedro.common.tryClear
 import com.pedro.encoder.CodecErrorCallback
 import com.pedro.encoder.Frame
@@ -84,6 +85,8 @@ abstract class StreamBase(
   //video/audio record
   private var recordController: RecordController = AndroidMuxerRecordController()
   private val fpsListener = FpsListener()
+  @Volatile
+  private var debugListener: DebugListener? = null
   var isStreaming = false
     private set
   var isOnPreview = false
@@ -432,6 +435,7 @@ abstract class StreamBase(
     audioSource.release()
     if (wasRunning) source.start(getMicrophoneData)
     audioSource = source
+    source.debugListener = debugListener
   }
 
   /**
@@ -463,6 +467,34 @@ abstract class StreamBase(
    */
   fun setFpsListener(callback: FpsListener.Callback?) {
     fpsListener.setCallback(callback)
+  }
+
+  /**
+   * Register a listener to receive structured debug events emitted by the library.
+   * Useful for investigating device-specific issues (e.g. AudioRecord, codec, or ROM issues)
+   * without relying on Logcat.
+   *
+   * The application decides whether to ignore, display, save, or upload the events.
+   * When no listener is registered the overhead is effectively zero.
+   *
+   * The listener field is `@Volatile`, so swapping it mid-stream on another thread is safe:
+   * any event dispatched concurrently will be delivered to either the old or the new listener,
+   * but never to both and never to a partially-constructed reference.
+   *
+   * @param listener the [DebugListener] to notify; replaces any previously registered listener.
+   */
+  fun setDebugListener(listener: DebugListener) {
+    debugListener = listener
+    audioSource.debugListener = listener
+  }
+
+  /**
+   * Unregister the previously set [DebugListener].
+   * After this call no further debug events will be delivered.
+   */
+  fun removeDebugListener() {
+    debugListener = null
+    audioSource.debugListener = null
   }
 
   /**

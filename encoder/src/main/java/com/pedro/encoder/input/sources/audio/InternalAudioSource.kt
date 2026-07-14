@@ -23,7 +23,13 @@ import android.os.Build
 import android.os.Handler
 import android.os.HandlerThread
 import androidx.annotation.RequiresApi
+import com.pedro.common.TimeUtils
+import com.pedro.common.debug.DebugCategory
+import com.pedro.common.debug.DebugEvent
+import com.pedro.common.debug.DebugLevel
+import com.pedro.common.debug.DebugListener
 import com.pedro.encoder.Frame
+import com.pedro.encoder.audio.AudioEncoder
 import com.pedro.encoder.input.audio.CustomAudioEffect
 import com.pedro.encoder.input.audio.GetMicrophoneData
 import com.pedro.encoder.input.audio.MicrophoneManager
@@ -45,8 +51,20 @@ class InternalAudioSource(
   private var handlerThread = HandlerThread(TAG)
   private val mediaProjectionCallback = mediaProjectionCallback ?: object : MediaProjection.Callback() {}
 
+  // Propagate the debug listener to the underlying MicrophoneManager
+  override var debugListener: DebugListener?
+    get() = super.debugListener
+    set(value) {
+      super.debugListener = value
+      microphone.debugListener = value
+    }
+
   init {
     MediaProjectionHandler.mediaProjection = mediaProjection
+  }
+
+  private fun emitDebug(level: DebugLevel, event: String, payload: Map<String, Any> = emptyMap()) {
+    debugListener?.onDebugEvent(DebugEvent(TimeUtils.getCurrentTimeMillis(), level, DebugCategory.AUDIO, event, payload))
   }
 
   override fun create(sampleRate: Int, isStereo: Boolean, echoCanceler: Boolean, noiseSuppressor: Boolean): Boolean {
@@ -62,23 +80,43 @@ class InternalAudioSource(
     this.getMicrophoneData = getMicrophoneData
     if (!isRunning()) {
       if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+        val mediaProjection = MediaProjectionHandler.mediaProjection
+        if (mediaProjection == null) {
+          emitDebug(DebugLevel.ERROR, "InternalAudioStartFailed", mapOf("reason" to "MediaProjection is null"))
+          throw IllegalStateException("MediaProjection is null")
+        }
         handlerThread = HandlerThread(TAG)
         handlerThread.start()
-        MediaProjectionHandler.mediaProjection?.registerCallback(mediaProjectionCallback, Handler(handlerThread.looper))
-        val config = AudioPlaybackCaptureConfiguration.Builder(MediaProjectionHandler.mediaProjection!!)
-          .addMatchingUsage(AudioAttributes.USAGE_MEDIA)
-          .addMatchingUsage(AudioAttributes.USAGE_GAME)
-          .addMatchingUsage(AudioAttributes.USAGE_UNKNOWN).build()
+        mediaProjection.registerCallback(mediaProjectionCallback, Handler(handlerThread.looper))
+        val config = try {
+          AudioPlaybackCaptureConfiguration.Builder(mediaProjection)
+            .addMatchingUsage(AudioAttributes.USAGE_MEDIA)
+            .addMatchingUsage(AudioAttributes.USAGE_GAME)
+            .addMatchingUsage(AudioAttributes.USAGE_UNKNOWN).build()
+        } catch (e: Exception) {
+          emitDebug(DebugLevel.ERROR, "InternalAudioStartFailed", mapOf("reason" to "AudioPlaybackCaptureConfiguration failed", "error" to (e.message ?: "")))
+          throw IllegalArgumentException("AudioPlaybackCaptureConfiguration failed: ${e.message}", e)
+        }
+        val bufferSize = AudioEncoder.inputSize * 5
+        emitDebug(DebugLevel.INFO, "InternalAudioCreated", mapOf(
+          "mediaProjectionAvailable" to true,
+          "audioPlaybackCaptureEnabled" to true,
+          "sampleRate" to sampleRate,
+          "channels" to (if (isStereo) 2 else 1),
+          "bufferSize" to bufferSize
+        ))
         try {
           val result = microphone.createInternalMicrophone(config, sampleRate, isStereo,
             echoCanceler, noiseSuppressor)
           if (!result) throw IllegalArgumentException("Failed to create internal audio source")
         } catch (e: UnsupportedOperationException) {
+          emitDebug(DebugLevel.ERROR, "InternalAudioStartFailed", mapOf("reason" to "invalid MediaProjection used", "error" to (e.message ?: "")))
           throw IllegalArgumentException("invalid MediaProjection used")
         }
       } else {
         throw IllegalStateException("Using internal audio in a invalid Android version. Android 10+ is necessary")
       }
+      emitDebug(DebugLevel.INFO, "InternalAudioStarted")
       microphone.start()
     }
   }
@@ -88,6 +126,7 @@ class InternalAudioSource(
       this.getMicrophoneData = null
       microphone.stop()
       handlerThread.quitSafely()
+      emitDebug(DebugLevel.INFO, "InternalAudioStopped")
     }
   }
 
@@ -95,6 +134,7 @@ class InternalAudioSource(
 
   override fun release() {
     MediaProjectionHandler.mediaProjection?.unregisterCallback(mediaProjectionCallback)
+    emitDebug(DebugLevel.INFO, "InternalAudioReleased")
   }
 
   override fun inputPCMData(frame: Frame) {
