@@ -228,6 +228,7 @@ class SrtClient(private val connectChecker: ConnectChecker) {
                     if (socketType == SocketType.NATIVE) {
                         onMainThread {
                             connectChecker.onConnectionSuccess()
+                            connectChecker.onStreamIdReceived(socket?.acceptedStreamId ?: "")
                         }
                         srtSender.socket = socket
                         srtSender.start()

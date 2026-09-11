@@ -221,3 +221,16 @@ Java_com_pedro_srt_utils_SrtSocket_nativeClose(JNIEnv *env, jobject thiz, jint s
         srt_close((SRTSOCKET) sock);
     }
 }
+
+extern "C" JNIEXPORT jstring JNICALL
+Java_com_pedro_srt_utils_SrtSocket_nativeGetStreamId(JNIEnv *env, jobject thiz, jint sock) {
+    char streamId[512] = {0};
+    int len = sizeof(streamId);
+
+    int result = srt_getsockopt((SRTSOCKET) sock, 0, SRTO_STREAMID, streamId, &len);
+
+    if (result == SRT_ERROR) {
+        return env->NewStringUTF("");
+    }
+    return env->NewStringUTF(streamId);
+}
