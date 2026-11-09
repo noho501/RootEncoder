@@ -1,5 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
-<menu xmlns:android="http://schemas.android.com/apk/res/android">
+<menu xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto">
+    <item
+        android:id="@+id/action_connect_remote"
+        android:title="Connect Remote"
+        app:showAsAction="never" />
+    <item
+        android:id="@+id/test_remote_mic"
+        android:title="Test Toggle Mute"
+        app:showAsAction="never" />
     <item android:title="@string/video_source">
         <menu>
             <item

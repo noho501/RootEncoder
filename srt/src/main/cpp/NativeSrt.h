@@ -23,6 +23,9 @@ Java_com_pedro_srtreceiver_SrtServerSocket_nativeRecv(JNIEnv *env, jobject thiz,
 JNIEXPORT void JNICALL
 Java_com_pedro_srtreceiver_SrtServerSocket_nativeClose(JNIEnv *env, jobject thiz, jint socketFd);
 
+JNIEXPORT jstring JNICALL
+Java_com_pedro_srt_utils_SrtSocket_nativeGetStreamId(JNIEnv *env, jobject thiz, jint sock);
+
 #ifdef __cplusplus
 }
 #endif

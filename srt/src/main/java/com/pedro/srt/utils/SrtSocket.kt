@@ -28,8 +28,10 @@ import java.io.IOException
 /**
  * Created by pedro on 22/8/23.
  */
-class SrtSocket(val type: SocketType, val host: String, val port: Int, timeout: Long) {
+class SrtSocket(val type: SocketType, val host: String, val port: Int, timeout: Long, private val writeTimeoutMs: Long = 2000L) {
     private var nativeSock: Int = -1
+    var acceptedStreamId: String = ""
+    private var writeFailStartTime: Long = 0L
     private val socket =
         StreamSocket.createUdpSocket(type, host, port, timeout, receiveSize = Constants.MTU)
 
@@ -52,6 +54,9 @@ class SrtSocket(val type: SocketType, val host: String, val port: Int, timeout: 
                 val clientSock = nativeAccept(nativeSock)
 
                 if (clientSock < 0) throw IOException("Native Accept failed")
+
+                acceptedStreamId = nativeGetStreamId(clientSock)
+                Log.d("SrtSocket", "NATIVE: Accepted connection, streamid: $acceptedStreamId")
 
                 nativeClose(nativeSock)
                 nativeSock = clientSock
@@ -94,14 +99,23 @@ class SrtSocket(val type: SocketType, val host: String, val port: Int, timeout: 
 
     suspend fun write(srtPacket: SrtPacket) = withContext(Dispatchers.IO) {
         if (type == SocketType.NATIVE && nativeSock != -1) {
-            if (srtPacket is DataPacket) {
+            val result = if (srtPacket is DataPacket) {
                 nativeWrite(nativeSock, srtPacket.payload)
             } else {
                 nativeWrite(nativeSock, srtPacket.getData())
             }
+
+            if (result < 0) {
+                if (writeFailStartTime == 0L) {
+                    writeFailStartTime = System.currentTimeMillis()
+                } else if (System.currentTimeMillis() - writeFailStartTime > writeTimeoutMs) {
+                    throw IOException("Native write failed continuously for ${writeTimeoutMs}ms, forcing disconnect")
+                }
+            } else {
+                writeFailStartTime = 0L
+            }
             return@withContext
         }
-
         socket.write(srtPacket.getData())
     }
 
@@ -121,6 +135,7 @@ class SrtSocket(val type: SocketType, val host: String, val port: Int, timeout: 
     private external fun nativeWrite(sock: Int, data: ByteArray): Int
     private external fun nativeRead(sock: Int, data: ByteArray): Int
     private external fun nativeClose(sock: Int)
+    private external fun nativeGetStreamId(sock: Int): String
 
     companion object {
         init {

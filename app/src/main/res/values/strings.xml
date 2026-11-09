@@ -78,5 +78,6 @@
   <string name="mp3">MP3</string>
   <string name="audio">Audio</string>
   <string name="mic">Mic</string>
+    <string name="wss_remote_code_key">"wss_remote_code"</string>
 
 </resources>

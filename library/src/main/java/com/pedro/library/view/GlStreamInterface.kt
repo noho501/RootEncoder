@@ -344,6 +344,8 @@ class GlStreamInterface(private val context: Context): OnFrameAvailableListener,
             mainRender.drawScreenPreview(info.config.width, info.config.height, info.config.isPortrait, info.config.aspectRatioMode, 0,
               info.config.verticalFlip, info.config.horizontalFlip, info.config.viewPort)
             info.surfaceManager.swapBuffer()
+            val timestamp = mainRender.getSurfaceTexture().timestamp
+            info.surfaceManager.setPresentationTime(timestamp)
           }
         }
       }

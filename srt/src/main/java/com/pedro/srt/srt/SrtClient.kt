@@ -213,6 +213,7 @@ class SrtClient(private val connectChecker: ConnectChecker) {
                 val port = urlParser.port ?: 8888
                 val path = urlParser.getQuery("streamid") ?: urlParser.getFullPath()
                 latency = urlParser.getQuery("latency")?.toIntOrNull() ?: latency
+                val writeTimeout = urlParser.getQuery("writeTimeout")?.toLongOrNull() ?: 2000L
                 if (path.isEmpty()) {
                     isStreaming = false
                     onMainThread {
@@ -223,11 +224,12 @@ class SrtClient(private val connectChecker: ConnectChecker) {
                 commandsManager.host = host
 
                 val error = runCatching {
-                    socket = SrtSocket(socketType, host, port, socketTimeout)
+                    socket = SrtSocket(socketType, host, port, socketTimeout, writeTimeout)
                     socket?.connect("listener")
                     if (socketType == SocketType.NATIVE) {
                         onMainThread {
                             connectChecker.onConnectionSuccess()
+                            connectChecker.onStreamIdReceived(socket?.acceptedStreamId ?: "")
                         }
                         srtSender.socket = socket
                         srtSender.start()
@@ -347,6 +349,9 @@ class SrtClient(private val connectChecker: ConnectChecker) {
                 }
             }.exceptionOrNull()
             if (error != null && ConnectionFailed.parse(error.validMessage()) != ConnectionFailed.TIMEOUT) {
+                onMainThread {
+                    connectChecker.onDisconnect()
+                }
                 scope.cancel()
             }
         }

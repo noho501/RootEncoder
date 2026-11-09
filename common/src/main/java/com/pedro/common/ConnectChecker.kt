@@ -26,4 +26,5 @@ interface ConnectChecker: BitrateChecker {
   fun onDisconnect()
   fun onAuthError()
   fun onAuthSuccess()
+  fun onStreamIdReceived(streamId: String) {}
 }

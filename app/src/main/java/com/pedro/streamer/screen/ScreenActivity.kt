@@ -89,6 +89,8 @@ class ScreenActivity : AppCompatActivity(), ConnectChecker {
     super.onCreate(savedInstanceState)
     window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
     setContentView(R.layout.activity_display)
+    val toolbar = findViewById<androidx.appcompat.widget.Toolbar>(R.id.toolbar)
+    setSupportActionBar(toolbar)
     fitAppPadding()
     button = findViewById(R.id.b_start_stop)
     etUrl = findViewById(R.id.et_rtp_url)
