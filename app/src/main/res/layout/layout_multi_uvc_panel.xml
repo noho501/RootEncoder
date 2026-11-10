@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Strip below the stream preview with the two UVC cameras side by side -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:background="@drawable/bg_multi_uvc_panel"
+    android:clickable="true"
+    android:focusable="true"
+    android:orientation="vertical"
+    android:paddingStart="@dimen/grid_2"
+    android:paddingTop="@dimen/grid_1"
+    android:paddingEnd="@dimen/grid_2"
+    android:paddingBottom="@dimen/grid_2">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center_vertical"
+        android:orientation="horizontal">
+
+        <TextView
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="2dp"
+            android:layout_weight="1"
+            android:text="@string/multi_uvc_title"
+            android:textColor="@color/white"
+            android:textSize="14sp"
+            android:textStyle="bold" />
+
+        <ImageView
+            android:id="@+id/multi_uvc_close"
+            android:layout_width="32dp"
+            android:layout_height="32dp"
+            android:background="?selectableItemBackgroundBorderless"
+            android:contentDescription="@string/multi_uvc_close"
+            android:padding="4dp"
+            android:src="@drawable/ic_multi_uvc_close" />
+    </LinearLayout>
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center_horizontal"
+        android:orientation="horizontal">
+
+        <include
+            android:id="@+id/multi_uvc_cam1"
+            layout="@layout/item_multi_uvc_preview"
+            android:layout_width="@dimen/multi_uvc_preview_width"
+            android:layout_height="@dimen/multi_uvc_preview_height"
+            android:layout_marginEnd="@dimen/grid_1" />
+
+        <include
+            android:id="@+id/multi_uvc_cam2"
+            layout="@layout/item_multi_uvc_preview"
+            android:layout_width="@dimen/multi_uvc_preview_width"
+            android:layout_height="@dimen/multi_uvc_preview_height"
+            android:layout_marginStart="@dimen/grid_1" />
+    </LinearLayout>
+</LinearLayout>

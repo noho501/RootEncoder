@@ -21,6 +21,7 @@ import com.pedro.common.onMainThreadHandler
 import com.pedro.encoder.input.sources.video.Camera1Source
 import com.pedro.encoder.input.sources.video.Camera2Source
 import com.pedro.extrasources.CameraXSource
+import com.pedro.extrasources.MultiCameraUvcSource
 import com.pedro.library.base.recording.RecordController
 import com.pedro.library.generic.GenericStream
 import com.pedro.library.util.BitrateAdapter
@@ -50,6 +51,8 @@ class CameraFragment : Fragment(), ConnectChecker {
     private lateinit var surfaceView: SurfaceView
     private lateinit var bStartStop: ImageView
     private lateinit var txtBitrate: TextView
+    private var multiUvcPanel: MultiUvcPanel? = null
+    private var multiUvcSource: MultiCameraUvcSource? = null
     val width = 1280
     val height = 720
     val vBitrate = 3000 * 1000
@@ -81,6 +84,7 @@ class CameraFragment : Fragment(), ConnectChecker {
 
         txtBitrate = view.findViewById(R.id.txt_bitrate)
         surfaceView = view.findViewById(R.id.surfaceView)
+        initMultiUvcPanel(view)
         (activity as? RotationActivity)?.let {
             surfaceView.setOnTouchListener(it)
         }
@@ -204,6 +208,18 @@ class CameraFragment : Fragment(), ConnectChecker {
                 }
             }
         }
+    }
+
+    private fun initMultiUvcPanel(view: View) {
+        multiUvcPanel = MultiUvcPanel(view.findViewById(R.id.multi_uvc_panel)).also {
+            it.attach(multiUvcSource)
+        }
+    }
+
+    /** Shows the Multi UVC panel for [source], or hides it when the UVC source is not used (null). */
+    fun attachMultiUvcSource(source: MultiCameraUvcSource?) {
+        multiUvcSource = source
+        multiUvcPanel?.attach(source)
     }
 
     fun setOrientationMode(isVertical: Boolean) {

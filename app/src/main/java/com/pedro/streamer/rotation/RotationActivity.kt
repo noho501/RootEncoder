@@ -35,8 +35,8 @@ import com.pedro.encoder.input.sources.video.BitmapSource
 import com.pedro.encoder.input.sources.video.BufferVideoSource
 import com.pedro.encoder.input.sources.video.Camera1Source
 import com.pedro.encoder.input.sources.video.Camera2Source
-import com.pedro.extrasources.CameraUvcSource
 import com.pedro.extrasources.CameraXSource
+import com.pedro.extrasources.MultiCameraUvcSource
 import com.pedro.streamer.R
 import com.pedro.streamer.utils.FilterMenu
 import com.pedro.streamer.utils.fitAppPadding
@@ -64,6 +64,10 @@ class RotationActivity : AppCompatActivity(), OnTouchListener {
     private var currentAudioSource: MenuItem? = null
     private var currentOrientation: MenuItem? = null
     private var currentFilter: MenuItem? = null
+    private val videoSourceIds = setOf(
+        R.id.video_source_camera1, R.id.video_source_camera2, R.id.video_source_camerax,
+        R.id.video_source_camera_uvc, R.id.video_source_bitmap, R.id.video_source_buffer
+    )
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -89,6 +93,10 @@ class RotationActivity : AppCompatActivity(), OnTouchListener {
 
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
         try {
+            if (item.itemId in videoSourceIds && item.itemId != R.id.video_source_camera_uvc) {
+                // The Multi UVC panel belongs to the UVC source only
+                cameraFragment.attachMultiUvcSource(null)
+            }
             when (item.itemId) {
                 R.id.action_connect_remote -> {
                     WssConnectBottomSheet().show(supportFragmentManager, "WssConnect")
@@ -121,7 +129,10 @@ class RotationActivity : AppCompatActivity(), OnTouchListener {
 
                 R.id.video_source_camera_uvc -> {
                     currentVideoSource = item.updateMenuColor(this, currentVideoSource)
-                    cameraFragment.genericStream.changeVideoSource(CameraUvcSource())
+                    // Up to two UVC cameras, shown in the Multi UVC panel once both are plugged in
+                    val source = MultiCameraUvcSource()
+                    cameraFragment.genericStream.changeVideoSource(source)
+                    cameraFragment.attachMultiUvcSource(source)
                 }
 
                 R.id.video_source_bitmap -> {

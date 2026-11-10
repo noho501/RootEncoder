@@ -80,4 +80,14 @@
   <string name="mic">Mic</string>
     <string name="wss_remote_code_key">"wss_remote_code"</string>
 
+  <!-- Multi UVC panel -->
+  <string name="multi_uvc_title">Multi UVC</string>
+  <string name="multi_uvc_close">Close</string>
+  <string name="multi_uvc_cam_label">CAM %1$d</string>
+  <string name="multi_uvc_slot_empty">Plug in a camera</string>
+  <string name="multi_uvc_connecting">Connecting…</string>
+  <string name="multi_uvc_no_bandwidth">Not enough USB bandwidth</string>
+  <string name="multi_uvc_no_picture_no_frames">No picture: the camera sends no video</string>
+  <string name="multi_uvc_no_picture_undecodable">No picture: video cannot be decoded</string>
+  <string name="multi_uvc_trying_size">Trying %1$d×%2$d…</string>
 </resources>

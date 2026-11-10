@@ -1,0 +1,86 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- One camera in the Multi UVC panel: its preview, a placeholder while it has no picture,
+     a label with a status dot, and a border when it is the camera being streamed -->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="@dimen/multi_uvc_preview_width"
+    android:layout_height="@dimen/multi_uvc_preview_height"
+    android:background="@drawable/bg_multi_uvc_slot"
+    android:clickable="true"
+    android:focusable="true"
+    android:foreground="?selectableItemBackground">
+
+    <!-- The camera preview surface is added here once the camera logic is in place -->
+    <FrameLayout
+        android:id="@+id/multi_uvc_preview_container"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent" />
+
+    <LinearLayout
+        android:id="@+id/multi_uvc_placeholder"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:gravity="center"
+        android:orientation="vertical"
+        android:paddingStart="6dp"
+        android:paddingTop="14dp"
+        android:paddingEnd="6dp"
+        android:paddingBottom="4dp">
+
+        <ImageView
+            android:layout_width="24dp"
+            android:layout_height="24dp"
+            android:importantForAccessibility="no"
+            android:src="@drawable/ic_multi_uvc_videocam"
+            app:tint="@color/multi_uvc_icon" />
+
+        <TextView
+            android:id="@+id/multi_uvc_placeholder_text"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="2dp"
+            android:gravity="center"
+            android:maxLines="2"
+            android:text="@string/multi_uvc_slot_empty"
+            android:textColor="@color/multi_uvc_text_secondary"
+            android:textSize="11sp" />
+    </LinearLayout>
+
+    <LinearLayout
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="top|start"
+        android:layout_margin="4dp"
+        android:background="@drawable/bg_multi_uvc_chip"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingStart="5dp"
+        android:paddingTop="2dp"
+        android:paddingEnd="6dp"
+        android:paddingBottom="2dp">
+
+        <View
+            android:id="@+id/multi_uvc_status_dot"
+            android:layout_width="7dp"
+            android:layout_height="7dp"
+            android:background="@drawable/bg_multi_uvc_dot" />
+
+        <TextView
+            android:id="@+id/multi_uvc_label"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="4dp"
+            android:textColor="@color/white"
+            android:textSize="11sp"
+            android:textStyle="bold"
+            tools:text="CAM 1" />
+    </LinearLayout>
+
+    <View
+        android:id="@+id/multi_uvc_selected_border"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="@drawable/bg_multi_uvc_selected"
+        android:visibility="gone" />
+</FrameLayout>
