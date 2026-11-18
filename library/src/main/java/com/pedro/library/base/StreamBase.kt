@@ -84,6 +84,7 @@ abstract class StreamBase(
   //video/audio record
   private var recordController: RecordController = AndroidMuxerRecordController()
   private val fpsListener = FpsListener()
+  @Volatile
   var isStreaming = false
     private set
   var isOnPreview = false
@@ -269,7 +270,14 @@ abstract class StreamBase(
       videoEncoderRecord.requestKeyframe()
     }
     recordController.startRecord(path, listener, usedTracks)
-    if (!isStreaming) startSources()
+    if (!isStreaming) {
+      try {
+        startSources()
+      } catch (e: Exception) {
+        recordController.stopRecord()
+        throw e
+      }
+    }
   }
 
   /**
@@ -508,6 +516,15 @@ abstract class StreamBase(
   protected fun getVideoFps() = videoEncoder.fps
 
   private fun startSources() {
+    val hasRunningEncoder = videoEncoder.isRunning ||
+        audioEncoder.isRunning ||
+        (differentRecordResolution && videoEncoderRecord.isRunning)
+    if (hasRunningEncoder) {
+      stopSources()
+      if (!prepareEncoders()) {
+        throw IllegalStateException("Failed to re-prepare encoders before starting sources")
+      }
+    }
     if (!glInterface.isRunning) glInterface.start()
     if (!videoSource.isRunning()) {
       videoSource.start(glInterface.surfaceTexture)

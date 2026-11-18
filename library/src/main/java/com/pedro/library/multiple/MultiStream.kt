@@ -182,7 +182,7 @@ class MultiStream(
                 break
             }
         }
-        if (shouldStarEncoder) super.startStream("")
+        if (shouldStarEncoder && !isStreaming) super.startStream("")
         when (type) {
             MultiType.RTMP -> {
                 val resolution = super.getVideoResolution()
@@ -200,6 +200,12 @@ class MultiStream(
     }
 
     fun stopStream(type: MultiType, index: Int) {
+        when (type) {
+            MultiType.RTMP -> rtmpClients[index].disconnect()
+            MultiType.RTSP -> rtspClients[index].disconnect()
+            MultiType.SRT -> srtClients[index].disconnect()
+            MultiType.UDP -> udpClients[index].disconnect()
+        }
         var shouldStopEncoder = true
         for (rtmpClient in rtmpClients) {
             if (rtmpClient.isStreaming) {
@@ -225,13 +231,7 @@ class MultiStream(
                 break
             }
         }
-        when (type) {
-            MultiType.RTMP -> rtmpClients[index].disconnect()
-            MultiType.RTSP -> rtspClients[index].disconnect()
-            MultiType.SRT -> srtClients[index].disconnect()
-            MultiType.UDP -> udpClients[index].disconnect()
-        }
-        if (shouldStopEncoder) super.stopStream()
+        if (shouldStopEncoder && isStreaming) super.stopStream()
     }
 
     override fun stopStreamImp() {
