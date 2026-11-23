@@ -251,7 +251,13 @@ public abstract class BaseDecoder {
             codec.queueInputBuffer(inIndex, 0, sampleSize, ts + sleepTime, 0);
           }
         }
-        int outIndex = codec.dequeueOutputBuffer(bufferInfo, 10000);
+        int outIndex = finished
+            ? MediaCodec.INFO_TRY_AGAIN_LATER
+            : codec.dequeueOutputBuffer(bufferInfo, 10000);
+        if (finished || inIndex < 0) {
+          Log.w(TAG, "[WB-TEST-1] inIndex=" + inIndex + ", outIndex=" + outIndex
+              + ", finished=" + finished + ", looped=" + looped);
+        }
         if (outIndex >= 0) {
           if (!sleep(sleepTime)) return;
           ByteBuffer output;
