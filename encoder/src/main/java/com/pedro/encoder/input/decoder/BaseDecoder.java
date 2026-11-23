@@ -288,13 +288,7 @@ public abstract class BaseDecoder {
             }
           }
         }
-        int outIndex = finished
-            ? MediaCodec.INFO_TRY_AGAIN_LATER
-            : codec.dequeueOutputBuffer(bufferInfo, 10000);
-        if (finished || inputEosReached) {
-          Log.w(TAG, "[WB-TEST-1] inIndex=" + inIndex + ", outIndex=" + outIndex
-              + ", finished=" + finished + ", inputEos=" + inputEosReached + ", looped=" + looped);
-        }
+        int outIndex = codec.dequeueOutputBuffer(bufferInfo, 10000);
         if (outIndex >= 0) {
           eosDrainEmptyCount = 0;
           long effectiveSleep = inputEosReached
