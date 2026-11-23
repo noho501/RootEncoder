@@ -43,8 +43,9 @@ public abstract class BaseDecoder {
   protected volatile boolean running = false;
   protected MediaFormat mediaFormat;
   private ExecutorService executor;
+  private static final int MAX_EOS_DRAIN_RETRIES = 15;
   protected String mime = "";
-  protected boolean loopMode = false;
+  protected volatile boolean loopMode = false;
   private volatile long startTs = 0;
   protected long duration;
   protected final Object sync = new Object();
@@ -123,8 +124,8 @@ public abstract class BaseDecoder {
     boolean wasRunning = running;
     stopDecoder(!wasRunning);
     moveTo(0);
-    prepare(surface);
-    if (wasRunning) start();
+    boolean prepared = prepare(surface);
+    if (wasRunning && prepared) start();
   }
 
   protected boolean prepare(Surface surface) {
@@ -141,8 +142,8 @@ public abstract class BaseDecoder {
   protected void resetCodec(Surface surface) {
     boolean wasRunning = running;
     stopDecoder(!wasRunning);
-    prepare(surface);
-    if (wasRunning) {
+    boolean prepared = prepare(surface);
+    if (wasRunning && prepared) {
       start();
     }
   }
@@ -153,22 +154,24 @@ public abstract class BaseDecoder {
 
   protected void stopDecoder(boolean clearTs) {
     running = false;
+    looped = false;
     if (clearTs) startTs = 0;
-    if (executor != null) {
-      executor.shutdownNow();
-      executor = null;
+    ExecutorService oldExecutor = executor;
+    executor = null;
+    if (oldExecutor != null) {
+      oldExecutor.shutdownNow();
+    }
+    synchronized (sync) {
       if (codec != null) {
         try {
           codec.flush();
         } catch (IllegalStateException ignored) { }
+        try {
+          codec.stop();
+          codec.release();
+        } catch (IllegalStateException | NullPointerException ignored) { }
+        codec = null;
       }
-    }
-    try {
-      codec.stop();
-      codec.release();
-      codec = null;
-    } catch (IllegalStateException | NullPointerException e) {
-      codec = null;
     }
   }
 
@@ -215,6 +218,8 @@ public abstract class BaseDecoder {
       startTs = TimeUtils.getCurrentTimeMicro();
     }
     boolean shouldFinish = false;
+    boolean inputEosReached = false;
+    int eosDrainEmptyCount = 0;
     long sleepTime = 0;
     while (running) {
         if (pause.get()) continue;
@@ -223,11 +228,13 @@ public abstract class BaseDecoder {
           break;
         }
         if (looped) {
-          decoderInterface.onLoop();
           looped = false;
+          decoderInterface.onLoop();
+          return;
         }
       synchronized (sync) {
-        int inIndex = codec.dequeueInputBuffer(10000);
+        if (!running || codec == null) break;
+        int inIndex = inputEosReached ? -1 : codec.dequeueInputBuffer(10000);
         int sampleSize;
         long timeStamp = TimeUtils.getCurrentTimeMicro();
         boolean finished = false;
@@ -240,25 +247,31 @@ public abstract class BaseDecoder {
           }
           if (input == null) continue;
           sampleSize = extractor.readFrame(input);
-          long ts = TimeUtils.getCurrentTimeMicro() - startTs;
-          sleepTime = extractor.getSleepTime(ts);
-          finished = !extractor.advance();
-          if (finished) {
-            if (!loopMode) {
-              codec.queueInputBuffer(inIndex, 0, 0, 0, MediaCodec.BUFFER_FLAG_END_OF_STREAM);
-            }
+          if (sampleSize <= 0) {
+            inputEosReached = true;
+            finished = true;
+            codec.queueInputBuffer(inIndex, 0, 0, 0, MediaCodec.BUFFER_FLAG_END_OF_STREAM);
           } else {
-            codec.queueInputBuffer(inIndex, 0, sampleSize, ts + sleepTime, 0);
+            long ts = TimeUtils.getCurrentTimeMicro() - startTs;
+            sleepTime = extractor.getSleepTime(ts);
+            finished = !extractor.advance();
+            if (finished) {
+              inputEosReached = true;
+              codec.queueInputBuffer(inIndex, 0, sampleSize, ts + sleepTime, MediaCodec.BUFFER_FLAG_END_OF_STREAM);
+            } else {
+              codec.queueInputBuffer(inIndex, 0, sampleSize, ts + sleepTime, 0);
+            }
           }
         }
         int outIndex = finished
             ? MediaCodec.INFO_TRY_AGAIN_LATER
             : codec.dequeueOutputBuffer(bufferInfo, 10000);
-        if (finished || inIndex < 0) {
+        if (finished || inputEosReached) {
           Log.w(TAG, "[WB-TEST-1] inIndex=" + inIndex + ", outIndex=" + outIndex
-              + ", finished=" + finished + ", looped=" + looped);
+              + ", finished=" + finished + ", inputEos=" + inputEosReached + ", looped=" + looped);
         }
         if (outIndex >= 0) {
+          eosDrainEmptyCount = 0;
           if (!sleep(sleepTime)) return;
           ByteBuffer output;
           if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
@@ -266,9 +279,19 @@ public abstract class BaseDecoder {
           } else {
             output = codec.getOutputBuffers()[outIndex];
           }
-          boolean render = decodeOutput(output, timeStamp);
+          boolean render = bufferInfo.size > 0 && output != null && decodeOutput(output, timeStamp);
           codec.releaseOutputBuffer(outIndex, render && bufferInfo.size != 0);
-          if (finished) {
+          if ((bufferInfo.flags & MediaCodec.BUFFER_FLAG_END_OF_STREAM) != 0) {
+            if (loopMode) {
+              looped = true;
+            } else {
+              Log.i(TAG, "end of file");
+              shouldFinish = true;
+            }
+          }
+        } else if (inputEosReached) {
+          eosDrainEmptyCount++;
+          if (eosDrainEmptyCount >= MAX_EOS_DRAIN_RETRIES) {
             if (loopMode) {
               looped = true;
             } else {
