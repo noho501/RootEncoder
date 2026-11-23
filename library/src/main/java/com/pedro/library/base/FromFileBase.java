@@ -17,6 +17,7 @@
 package com.pedro.library.base;
 
 import android.content.Context;
+import android.media.AudioAttributes;
 import android.media.AudioFormat;
 import android.media.AudioManager;
 import android.media.AudioTrack;
@@ -24,6 +25,8 @@ import android.media.MediaCodec;
 import android.media.MediaFormat;
 import android.net.Uri;
 import android.os.Build;
+import android.util.Log;
+import android.view.Surface;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
@@ -79,7 +82,7 @@ public abstract class FromFileBase {
   protected VideoEncoder videoEncoder;
   private AudioEncoder audioEncoder;
   private GlInterface glInterface;
-  private boolean streaming = false;
+  private volatile boolean streaming = false;
   protected RecordController recordController;
   private final FpsListener fpsListener = new FpsListener();
 
@@ -89,6 +92,10 @@ public abstract class FromFileBase {
   protected boolean videoEnabled = false;
   private boolean audioEnabled = false;
   private AudioTrack audioTrackPlayer;
+  private final Object audioTrackLock = new Object();
+  private final Object loopLock = new Object();
+  private boolean videoLoopReady = false;
+  private boolean audioLoopReady = false;
   private VideoDecoderInterface videoDecoderInterface;
   private AudioDecoderInterface audioDecoderInterface;
 
@@ -119,7 +126,7 @@ public abstract class FromFileBase {
     videoEncoder = new VideoEncoder(getVideoData);
     audioEncoder = new AudioEncoder(getAudioData);
     videoDecoder = new VideoDecoder(videoDecoderInterface, decoderInterfaceVideo);
-    audioDecoder = new AudioDecoder(getMicrophoneData, audioDecoderInterface, decoderInterfaceAudio);
+    audioDecoder = new AudioDecoder(getMicrophoneData, internalAudioDecoderInterface, decoderInterfaceAudio);
     recordController = new AndroidMuxerRecordController();
   }
 
@@ -263,8 +270,10 @@ public abstract class FromFileBase {
   }
 
   public boolean isAudioDeviceEnabled() {
-    return audioTrackPlayer != null
-        && audioTrackPlayer.getPlayState() == AudioTrack.PLAYSTATE_PLAYING;
+    synchronized (audioTrackLock) {
+      return audioTrackPlayer != null
+          && audioTrackPlayer.getPlayState() == AudioTrack.PLAYSTATE_PLAYING;
+    }
   }
 
   /**
@@ -277,24 +286,74 @@ public abstract class FromFileBase {
   }
 
   public void playAudioDevice() {
-    if (audioEnabled) {
-      if (isAudioDeviceEnabled()) {
-        audioTrackPlayer.stop();
-      }
+    if (!audioEnabled) return;
+    synchronized (audioTrackLock) {
+      releaseAudioTrackLocked();
+      int sampleRate = audioDecoder.getSampleRate();
       int channel =
           audioDecoder.isStereo() ? AudioFormat.CHANNEL_OUT_STEREO : AudioFormat.CHANNEL_OUT_MONO;
-      int buffSize = AudioTrack.getMinBufferSize(audioDecoder.getSampleRate(), channel,
+      int minBuffSize = AudioTrack.getMinBufferSize(sampleRate, channel,
           AudioFormat.ENCODING_PCM_16BIT);
-      audioTrackPlayer =
-          new AudioTrack(AudioManager.STREAM_MUSIC, audioDecoder.getSampleRate(), channel,
+      if (minBuffSize <= 0) {
+        Log.e(TAG, "Invalid AudioTrack buffer size: " + minBuffSize);
+        return;
+      }
+      int buffSize = Math.max(minBuffSize * 2, AudioEncoder.inputSize);
+      AudioTrack track = null;
+      try {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+          AudioAttributes attributes = new AudioAttributes.Builder()
+              .setUsage(AudioAttributes.USAGE_MEDIA)
+              .setContentType(AudioAttributes.CONTENT_TYPE_MOVIE)
+              .build();
+          AudioFormat format = new AudioFormat.Builder()
+              .setSampleRate(sampleRate)
+              .setChannelMask(channel)
+              .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
+              .build();
+          track = new AudioTrack(attributes, format, buffSize,
+              AudioTrack.MODE_STREAM, AudioManager.AUDIO_SESSION_ID_GENERATE);
+        } else {
+          track = new AudioTrack(AudioManager.STREAM_MUSIC, sampleRate, channel,
               AudioFormat.ENCODING_PCM_16BIT, buffSize, AudioTrack.MODE_STREAM);
-      audioTrackPlayer.play();
+        }
+        if (track.getState() == AudioTrack.STATE_INITIALIZED) {
+          track.play();
+          audioTrackPlayer = track;
+        } else {
+          Log.e(TAG, "AudioTrack failed to initialize");
+          track.release();
+        }
+      } catch (Exception e) {
+        Log.e(TAG, "playAudioDevice failed", e);
+        if (track != null) {
+          try {
+            track.release();
+          } catch (Exception ignored) { }
+        }
+        audioTrackPlayer = null;
+      }
     }
   }
 
   public void stopAudioDevice() {
-    if (audioEnabled && isAudioDeviceEnabled()) {
-      audioTrackPlayer.stop();
+    synchronized (audioTrackLock) {
+      releaseAudioTrackLocked();
+    }
+  }
+
+  private void releaseAudioTrackLocked() {
+    if (audioTrackPlayer != null) {
+      try {
+        if (audioTrackPlayer.getPlayState() == AudioTrack.PLAYSTATE_PLAYING) {
+          audioTrackPlayer.pause();
+          audioTrackPlayer.flush();
+          audioTrackPlayer.stop();
+        }
+      } catch (IllegalStateException ignored) { }
+      try {
+        audioTrackPlayer.release();
+      } catch (Exception ignored) { }
       audioTrackPlayer = null;
     }
   }
@@ -392,11 +451,24 @@ public abstract class FromFileBase {
   private void startEncoders() {
     long startTs = TimeUtils.getCurrentTimeMicro();
     if (videoEnabled) videoEncoder.start(startTs);
-    if (audioTrackPlayer != null) audioTrackPlayer.play();
+    synchronized (audioTrackLock) {
+      if (audioTrackPlayer != null
+          && audioTrackPlayer.getState() == AudioTrack.STATE_INITIALIZED
+          && audioTrackPlayer.getPlayState() != AudioTrack.PLAYSTATE_PLAYING) {
+        audioTrackPlayer.play();
+      }
+    }
     if (audioEnabled) audioEncoder.start(startTs);
     if (videoEnabled) prepareGlView();
-    if (videoEnabled) videoDecoder.start();
-    if (audioEnabled) audioDecoder.start();
+    synchronized (loopLock) {
+      videoLoopReady = false;
+      audioLoopReady = false;
+    }
+    if (videoEnabled) videoDecoder.resetExtractorTiming();
+    if (audioEnabled) audioDecoder.resetExtractorTiming();
+    long decoderStartTs = TimeUtils.getCurrentTimeMicro();
+    if (videoEnabled) videoDecoder.start(decoderStartTs);
+    if (audioEnabled) audioDecoder.start(decoderStartTs);
   }
 
   public void setDecoderErrorCallback(CodecErrorCallback codecErrorCallback) {
@@ -483,21 +555,26 @@ public abstract class FromFileBase {
       stopStreamImp();
     }
     if (!recordController.isRecording()) {
+      boolean wasVideoEnabled;
+      boolean wasAudioEnabled;
+      synchronized (loopLock) {
+        videoLoopReady = false;
+        audioLoopReady = false;
+        wasVideoEnabled = videoEnabled;
+        wasAudioEnabled = audioEnabled;
+        if (wasVideoEnabled) videoDecoder.stop();
+        if (wasAudioEnabled) audioDecoder.stop();
+        videoEnabled = false;
+        audioEnabled = false;
+      }
       if (glInterface != null) {
         glInterface.removeMediaCodecSurface();
         glInterface.stop();
       }
-      if (videoEnabled) videoDecoder.stop();
-      if (audioEnabled) audioDecoder.stop();
-      if (audioEnabled && isAudioDeviceEnabled()) {
-        audioTrackPlayer.stop();
-      }
-      audioTrackPlayer = null;
-      if (videoEnabled) videoEncoder.stop();
-      if (audioEnabled) audioEncoder.stop();
+      stopAudioDevice();
+      if (wasVideoEnabled) videoEncoder.stop();
+      if (wasAudioEnabled) audioEncoder.stop();
       recordController.resetFormats();
-      videoEnabled = false;
-      audioEnabled = false;
     }
   }
 
@@ -696,7 +773,7 @@ public abstract class FromFileBase {
     int sampleRate = audioDecoder.getSampleRate();
     boolean isStereo = audioDecoder.isStereo();
     boolean wasRunning = audioDecoder.isRunning();
-    AudioDecoder audioDecoder = new AudioDecoder(getMicrophoneData, audioDecoderInterface, decoderInterfaceAudio);
+    AudioDecoder audioDecoder = new AudioDecoder(getMicrophoneData, internalAudioDecoderInterface, decoderInterfaceAudio);
     audioDecoder.setExtractor(this.audioDecoder.getExtractor());
     runnable.run(audioDecoder);
     if (sampleRate != audioDecoder.getSampleRate()) throw new IOException("SampleRate must be the same that the previous file");
@@ -713,6 +790,15 @@ public abstract class FromFileBase {
    * @param time second to move.
    */
   public void moveTo(double time) {
+    synchronized (loopLock) {
+      if (videoLoopReady || audioLoopReady) {
+        videoLoopReady = false;
+        audioLoopReady = false;
+        if (!streaming && !isRecording()) return;
+        restartDecodersAt(time);
+        return;
+      }
+    }
     if (videoEnabled) videoDecoder.moveTo(time);
     if (audioEnabled) audioDecoder.moveTo(time);
   }
@@ -739,8 +825,18 @@ public abstract class FromFileBase {
   }
 
   private final GetMicrophoneData getMicrophoneData = frame -> {
-    if (audioTrackPlayer != null) {
-      audioTrackPlayer.write(frame.getBuffer(), frame.getOffset(), frame.getSize());
+    synchronized (audioTrackLock) {
+      if (audioTrackPlayer != null
+          && audioTrackPlayer.getPlayState() == AudioTrack.PLAYSTATE_PLAYING) {
+        try {
+          if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            audioTrackPlayer.write(frame.getBuffer(), frame.getOffset(), frame.getSize(),
+                AudioTrack.WRITE_NON_BLOCKING);
+          } else {
+            audioTrackPlayer.write(frame.getBuffer(), frame.getOffset(), frame.getSize());
+          }
+        } catch (IllegalStateException ignored) { }
+      }
     }
     audioEncoder.inputPCMData(frame);
   };
@@ -777,11 +873,62 @@ public abstract class FromFileBase {
     }
   };
 
+  private final AudioDecoderInterface internalAudioDecoderInterface = new AudioDecoderInterface() {
+    @Override
+    public void onAudioDecoderFinished() {
+      boolean shouldNotifyVideoFinished = false;
+      synchronized (loopLock) {
+        if (videoLoopReady && !videoDecoder.isLoopMode()) {
+          videoLoopReady = false;
+          audioLoopReady = false;
+          shouldNotifyVideoFinished = true;
+        }
+      }
+      if (audioDecoderInterface != null) audioDecoderInterface.onAudioDecoderFinished();
+      if (shouldNotifyVideoFinished && videoDecoderInterface != null) {
+        videoDecoderInterface.onVideoDecoderFinished();
+      }
+    }
+  };
+
+  private void onTrackLoopReady(boolean isVideo) {
+    synchronized (loopLock) {
+      if (!streaming && !isRecording()) return;
+      if (videoEnabled && audioEnabled) {
+        if (isVideo) {
+          videoLoopReady = true;
+        } else {
+          audioLoopReady = true;
+        }
+        if (!videoLoopReady || !audioLoopReady) return;
+        videoLoopReady = false;
+        audioLoopReady = false;
+      }
+      Log.i(TAG, "Synchronized loop restart (video=" + videoEnabled + ", audio=" + audioEnabled + ")");
+      restartDecodersAt(0);
+    }
+  }
+
+  private void restartDecodersAt(double time) {
+    Surface surface = glInterface != null ? glInterface.getSurface() : videoEncoder.getInputSurface();
+    boolean videoPrepared = false;
+    boolean audioPrepared = false;
+    if (videoEnabled) {
+      videoPrepared = videoDecoder.prepareReset(surface, time);
+    }
+    if (audioEnabled) {
+      audioPrepared = audioDecoder.prepareReset(null, time);
+    }
+    long sharedStartTs = TimeUtils.getCurrentTimeMicro();
+    if (videoPrepared) videoDecoder.start(sharedStartTs);
+    if (audioPrepared) audioDecoder.start(sharedStartTs);
+  }
+
   private final DecoderInterface decoderInterfaceVideo = new DecoderInterface() {
 
     @Override
     public void onLoop() {
-      if (videoDecoder.isRunning()) videoDecoder.reset(glInterface.getSurface());
+      onTrackLoopReady(true);
     }
   };
 
@@ -789,7 +936,7 @@ public abstract class FromFileBase {
 
     @Override
     public void onLoop() {
-      if (audioDecoder.isRunning()) audioDecoder.reset(null);
+      onTrackLoopReady(false);
     }
   };
 

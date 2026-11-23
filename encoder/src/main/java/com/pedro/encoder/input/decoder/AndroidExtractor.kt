@@ -100,6 +100,12 @@ class AndroidExtractor: Extractor {
     lastExtractorTs = getTimeStamp()
   }
 
+  override fun resetTiming() {
+    sleepTime = 0
+    accumulativeTs = 0
+    lastExtractorTs = max(0, getTimeStamp())
+  }
+
   override fun release() {
     mediaExtractor.release()
   }

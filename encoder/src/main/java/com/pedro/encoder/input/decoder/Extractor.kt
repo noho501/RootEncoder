@@ -48,6 +48,8 @@ interface Extractor {
 
   fun seekTo(time: Long)
 
+  fun resetTiming() {}
+
   fun release()
 
   fun getVideoInfo(): VideoInfo

@@ -80,7 +80,14 @@ public abstract class BaseDecoder {
   }
 
   public void start() {
+    start(0);
+  }
+
+  public void start(long startTs) {
     Log.i(TAG, "start decoder");
+    if (startTs > 0) {
+      this.startTs = startTs;
+    }
     running = true;
     try {
       codec.start();
@@ -124,8 +131,26 @@ public abstract class BaseDecoder {
     boolean wasRunning = running;
     stopDecoder(!wasRunning);
     moveTo(0);
+    if (!wasRunning) resetExtractorTiming();
     boolean prepared = prepare(surface);
     if (wasRunning && prepared) start();
+  }
+
+  public boolean prepareReset(Surface surface) {
+    return prepareReset(surface, 0);
+  }
+
+  public boolean prepareReset(Surface surface, double time) {
+    stopDecoder(true);
+    moveTo(time);
+    resetExtractorTiming();
+    return prepare(surface);
+  }
+
+  public void resetExtractorTiming() {
+    synchronized (sync) {
+      extractor.resetTiming();
+    }
   }
 
   protected boolean prepare(Surface surface) {
@@ -272,7 +297,10 @@ public abstract class BaseDecoder {
         }
         if (outIndex >= 0) {
           eosDrainEmptyCount = 0;
-          if (!sleep(sleepTime)) return;
+          long effectiveSleep = inputEosReached
+              ? (bufferInfo.size > 0 ? Math.min(sleepTime, 50L) : 0L)
+              : sleepTime;
+          if (!sleep(effectiveSleep)) return;
           ByteBuffer output;
           if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
             output = codec.getOutputBuffer(outIndex);
